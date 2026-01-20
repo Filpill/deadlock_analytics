@@ -1,0 +1,14 @@
+[project]
+name = "deadlock-analytics"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "deadlock-api-client",
+    "marimo>=0.19.4",
+    "pandas>=2.3.3",
+]
+
+[tool.uv.sources]
+deadlock-api-client = { git = "https://github.com/deadlock-api/openapi-clients", subdirectory = "python/api" }
