@@ -183,6 +183,54 @@
             letter-spacing: 1px;
             margin-bottom: 20px;
         }
+
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(22, 32, 45, 0.95);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid #3d4e5c;
+            border-top: 4px solid #66c0f4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            box-shadow: 0 0 20px rgba(102, 192, 244, 0.3);
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            margin-top: 25px;
+            color: #66c0f4;
+            font-size: 1.2em;
+            letter-spacing: 1px;
+            text-shadow: 0 0 10px rgba(102, 192, 244, 0.5);
+        }
+
+        .loading-subtext {
+            margin-top: 10px;
+            color: #8f98a0;
+            font-size: 0.9em;
+            letter-spacing: 0.5px;
+        }
     </style>
 </head>
 <body>
@@ -197,7 +245,7 @@
         </div>
         {% endif %}
 
-        <form method="POST" action="/analyze">
+        <form method="POST" action="/analyze" id="analyzeForm">
             <div class="form-group">
                 <label for="player_id">Player ID (SteamID3 Format)</label>
                 <input type="text"
@@ -222,5 +270,18 @@
             <p style="margin-top: 15px;"><strong>Example:</strong> <code>199540209</code></p>
         </div>
     </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-text">Analyzing Player Data</div>
+        <div class="loading-subtext">Fetching match history, statistics, and performance metrics...</div>
+    </div>
+
+    <script>
+        document.getElementById('analyzeForm').addEventListener('submit', function(e) {
+            // Show loading overlay
+            document.getElementById('loadingOverlay').classList.add('active');
+        });
+    </script>
 </body>
 </html>

@@ -18,12 +18,13 @@ def get_api_connection(player_id):
             "http_client": http.client.HTTPSConnection("api.deadlock-api.com"),
             "endpoint": {
                 "match_history": f"/v1/players/{player_id}/match-history?only_stored_history=false",
-                "player_stats": f"/v1/analytics/player-stats/metrics?account_ids={player_id}",
+                "player_stats": f"/v1/analytics/player-stats/metrics?account_id={player_id}",
                 "player_scoreboard": f"/v1/analytics/scoreboards/players?account_ids={player_id}&sort_by=matches",
                 "player_performance_curve": f"/v1/analytics/player-performance-curve?account_ids={player_id}&resolution=0",
                 "kill_death_stats": f"/v1/analytics/kill-death-stats?account_ids={player_id}",
                 "item_stats": f"/v1/analytics/item-stats?account_ids={player_id}&bucket=no_bucket",
                 "steam_search": f"/v1/players/steam-search?search_query={player_id}",
+                "mmr_history": f"/v1/players/{player_id}/mmr-history",
             }
         },
         "assets-api": {
@@ -31,6 +32,8 @@ def get_api_connection(player_id):
             "endpoint": {
                 "heroes": "/v2/heroes",
                 "items": "/v2/items",
+                "ranks": "/v2/ranks",
+                "images": "/v1/images",
             }
         },
         "headers": {
@@ -81,22 +84,33 @@ def create_visualizations(player_id):
     # Fetch data from all endpoints
     try:
         hero_names = get_request_data(connection, "assets-api", "heroes")
+        ranks_data = get_request_data(connection, "assets-api", "ranks")
         match_history = get_request_data(connection, "data-api", "match_history")
         player_stats = get_request_data(connection, "data-api", "player_stats")
         player_performance_curve = get_request_data(connection, "data-api", "player_performance_curve")
         kill_death_stats = get_request_data(connection, "data-api", "kill_death_stats")
         steam_profile = get_request_data(connection, "data-api", "steam_search")
+        mmr_history = get_request_data(connection, "data-api", "mmr_history")
 
-        if not all([hero_names, match_history]):
-            return None, None, "Failed to fetch data from API"
+        if not match_history:
+            return None, None, "Failed to fetch match history from API"
 
         # Convert to DataFrames
-        df_heroes = pd.json_normalize(hero_names)
         df_match_history = pd.json_normalize(match_history)
-        df_match_history = format_match_history(df_match_history, df_heroes)
+
+        # Handle heroes endpoint gracefully (might return 500)
+        if hero_names:
+            df_heroes = pd.json_normalize(hero_names)
+            df_match_history = format_match_history(df_match_history, df_heroes)
+        else:
+            print("Warning: Heroes endpoint returned error. Using hero IDs instead of names.")
+            # Add placeholder hero_name column using hero_id
+            df_match_history['hero_name'] = df_match_history['hero_id'].astype(str)
+            df_match_history['start_ts'] = pd.to_datetime(df_match_history['start_time'], unit='s')
         df_player_performance_curve = pd.json_normalize(player_performance_curve) if player_performance_curve else pd.DataFrame()
         df_kill_death_stats = pd.json_normalize(kill_death_stats) if kill_death_stats else pd.DataFrame()
         df_player_stats = pd.json_normalize(player_stats) if player_stats else pd.DataFrame()
+
 
         charts = {}
 
@@ -185,7 +199,7 @@ def create_visualizations(player_id):
                         {'visible': visible},  # Update trace visibility
                         {
                             'yaxis.title.text': metric['yaxis_title'],
-                            'title.text': f"Average {metric['name']} Over Game Time"  # Dynamic title
+                            'title.text': f"Cumulative {metric['name']} Over Game Time"  # Dynamic title
                         }
                     ]
                 })
@@ -194,7 +208,7 @@ def create_visualizations(player_id):
 
             # Update layout with dropdown
             fig3.update_layout(
-                title=f"Average {metrics[0]['name']} Over Game Time" if metrics else 'Player Performance Over Game Time',
+                title=f"Cumulative {metrics[0]['name']} Over Game Time" if metrics else 'Player Performance Over Game Time',
                 xaxis_title='Game Time (minutes)',
                 yaxis=dict(title=metrics[0]['yaxis_title'] if metrics else 'Value'),
                 hovermode='x unified',
@@ -320,14 +334,14 @@ def create_visualizations(player_id):
             print(f"Chart created with {len(fig4.data)} traces")
             charts['kd_stats'] = json.dumps(fig4, cls=PlotlyJSONEncoder)
 
-        # Chart 4.5: Player Percentile Distribution
+        # Chart 4.5: Community Percentile Distribution
         if not df_player_stats.empty:
             print(f"Player stats shape: {df_player_stats.shape}")
 
             # Define available metrics for distribution
             metrics = []
 
-            # Common metrics with readable names
+            # All available metrics with readable names
             metric_configs = [
                 ('kills', 'Kills'),
                 ('deaths', 'Deaths'),
@@ -340,13 +354,29 @@ def create_visualizations(player_id):
                 ('denies', 'Denies'),
                 ('player_damage', 'Player Damage'),
                 ('player_damage_per_min', 'Player Damage Per Minute'),
+                ('player_damage_taken_per_min', 'Damage Taken Per Minute'),
+                ('player_healing', 'Player Healing'),
+                ('healing', 'Total Healing'),
+                ('boss_damage', 'Boss Damage'),
+                ('neutral_damage', 'Neutral Damage'),
+                ('creep_damage', 'Creep Damage'),
+                ('accuracy', 'Accuracy (%)'),
+                ('crit_shot_rate', 'Critical Hit Rate'),
+                ('headshot_rate', 'Headshot Rate'),
+                ('hero_bullets_hit', 'Hero Bullets Hit'),
+                ('hero_bullets_hit_crit', 'Hero Crit Bullets'),
+                ('level_at_first_death', 'Level at First Death'),
+                ('deaths_to_neutrals', 'Deaths to Neutrals'),
             ]
 
             for metric_key, metric_name in metric_configs:
-                if f'{metric_key}.avg' in df_player_stats.columns and f'{metric_key}.std' in df_player_stats.columns:
-                    # Check if std_dev is reasonable
-                    std_dev = float(df_player_stats[f'{metric_key}.std'].iloc[0])
-                    if std_dev >= 0.01:  # Only include metrics with reasonable variance
+                # Check if we have percentile data to construct community distribution
+                if f'{metric_key}.percentile50' in df_player_stats.columns and f'{metric_key}.avg' in df_player_stats.columns:
+                    # Only include metrics with reasonable percentile spread
+                    p25 = float(df_player_stats[f'{metric_key}.percentile25'].iloc[0]) if f'{metric_key}.percentile25' in df_player_stats.columns else None
+                    p75 = float(df_player_stats[f'{metric_key}.percentile75'].iloc[0]) if f'{metric_key}.percentile75' in df_player_stats.columns else None
+
+                    if p25 is not None and p75 is not None and (p75 - p25) > 0.01:
                         metrics.append({
                             'key': metric_key,
                             'name': metric_name
@@ -359,81 +389,120 @@ def create_visualizations(player_id):
                 for i, metric in enumerate(metrics):
                     metric_key = metric['key']
 
-                    # Get stats
-                    avg = float(df_player_stats[f'{metric_key}.avg'].iloc[0])
-                    std_dev = float(df_player_stats[f'{metric_key}.std'].iloc[0])
+                    # Get player's average
+                    avg_col_name = f'{metric_key}.avg'
+                    if avg_col_name in df_player_stats.columns:
+                        player_avg = float(df_player_stats[avg_col_name].iloc[0])
+                    else:
+                        player_avg = 0
 
-                    # Generate normal distribution curve
-                    x_range = np.linspace(avg - 4*std_dev, avg + 4*std_dev, 200)
-                    y_range = stats.norm.pdf(x_range, avg, std_dev)
-
-                    print(f"{metric_key}: avg={avg:.2f}, std={std_dev:.2f}, y_max={np.max(y_range):.6f}, x_range=({x_range[0]:.2f}, {x_range[-1]:.2f})")
-
-                    # Get percentiles if available
+                    # Get community percentiles directly from API
                     percentiles = {}
                     for p in [1, 5, 10, 25, 50, 75, 90, 95, 99]:
                         col_name = f'{metric_key}.percentile{p}'
                         if col_name in df_player_stats.columns:
-                            percentiles[p] = df_player_stats[col_name].iloc[0]
+                            percentiles[p] = float(df_player_stats[col_name].iloc[0])
 
-                    # Add distribution curve
+                    # Use P50 (median) as community mean
+                    community_mean = percentiles.get(50, player_avg)
+
+                    # Estimate std from IQR for curve visualization
+                    if 25 in percentiles and 75 in percentiles:
+                        iqr = percentiles[75] - percentiles[25]
+                        community_std = iqr / 1.35
+                    elif 10 in percentiles and 90 in percentiles:
+                        p_range = percentiles[90] - percentiles[10]
+                        community_std = p_range / 2.56
+                    else:
+                        community_std = (percentiles.get(99, community_mean) - percentiles.get(1, community_mean)) / 6
+
+                    # Use actual percentile range for x-axis
+                    if percentiles:
+                        min_val = percentiles.get(1, community_mean - 3*community_std)
+                        max_val = percentiles.get(99, community_mean + 3*community_std)
+                        x_range = np.linspace(min_val * 0.9, max_val * 1.1, 300)
+                    else:
+                        x_range = np.linspace(community_mean - 4*community_std, community_mean + 4*community_std, 300)
+
+                    y_range = stats.norm.pdf(x_range, community_mean, community_std)
+                    y_max = float(np.max(y_range))
+
+                    # Print all percentile values for verification
+                    print(f"\n{metric_key}:")
+                    print(f"  Player avg: {player_avg:.2f}")
+                    print(f"  Community percentiles (from API): {percentiles}")
+
+                    # Add distribution curve (community)
                     fig4_5.add_trace(go.Scatter(
                         x=x_range.tolist(),
                         y=y_range.tolist(),
                         mode='lines',
-                        name='Distribution',
-                        line=dict(color='#66c0f4', width=4),
+                        name='Community Distribution',
+                        line=dict(color='#66c0f4', width=3),
                         fill='tozeroy',
-                        fillcolor='rgba(102, 192, 244, 0.4)',
-                        visible=(i == 0),  # Only first trace visible initially
-                        hovertemplate='Value: %{x:.2f}<br>Density: %{y:.4f}<extra></extra>'
+                        fillcolor='rgba(102, 192, 244, 0.2)',
+                        visible=(i == 0),
+                        hovertemplate='Value: %{x:.2f}<br>Density: %{y:.6f}<extra></extra>',
+                        showlegend=True
                     ))
 
-                    # Add vertical line for player's average
-                    y_max = float(np.max(y_range))
+                    # Add ALL percentile markers (vertical lines)
+                    percentile_colors = {
+                        1: '#cc0000', 5: '#ff3333', 10: '#ff6666',
+                        25: '#ff9944', 50: '#ffcc00',
+                        75: '#99dd66', 90: '#66cc66', 95: '#44bb44', 99: '#22aa22'
+                    }
+
+                    # Show selected percentiles (P10, P25, P50, P75, P90)
+                    for p, value in sorted(percentiles.items()):
+                        # Skip P1, P5, P95, P99
+                        if p not in [10, 25, 50, 75, 90]:
+                            continue
+
+                        color = percentile_colors.get(p, '#8f98a0')
+                        # Vary line width - thicker for quartiles, thinner for extremes
+                        if p == 50:
+                            width = 3
+                        elif p in [25, 75]:
+                            width = 2.5
+                        elif p in [10, 90]:
+                            width = 2
+                        else:
+                            width = 1.5
+
+                        fig4_5.add_trace(go.Scatter(
+                            x=[value, value],
+                            y=[0, y_max * 0.95],
+                            mode='lines',
+                            name=f'P{p}',
+                            line=dict(color=color, width=width, dash='dot'),
+                            visible=(i == 0),
+                            showlegend=True,
+                            hovertemplate=f'P{p}: {value:.2f}<extra></extra>'
+                        ))
+
+                    # Add player's average as bold line
                     fig4_5.add_trace(go.Scatter(
-                        x=[avg, avg],
-                        y=[0, y_max * 1.1],  # Extend slightly above curve
+                        x=[player_avg, player_avg],
+                        y=[0, y_max * 1.1],
                         mode='lines',
                         name='Your Average',
-                        line=dict(color='#5cc85c', width=4, dash='dash'),
-                        visible=(i == 0),
-                        hovertemplate=f'Your Avg: {avg:.2f}<extra></extra>'
-                    ))
-
-                    # Add -1 std deviation line
-                    fig4_5.add_trace(go.Scatter(
-                        x=[avg - std_dev, avg - std_dev],
-                        y=[0, y_max * 1.05],
-                        mode='lines',
-                        name='-1 SD',
-                        line=dict(color='#8f98a0', width=2, dash='dot'),
+                        line=dict(color='#22ff22', width=5, dash='solid'),
                         visible=(i == 0),
                         showlegend=True,
-                        hovertemplate=f'-1 SD: {avg - std_dev:.2f}<extra></extra>'
-                    ))
-
-                    # Add +1 std deviation line
-                    fig4_5.add_trace(go.Scatter(
-                        x=[avg + std_dev, avg + std_dev],
-                        y=[0, y_max * 1.05],
-                        mode='lines',
-                        name='+1 SD',
-                        line=dict(color='#8f98a0', width=2, dash='dot'),
-                        visible=(i == 0),
-                        showlegend=True,
-                        hovertemplate=f'+1 SD: {avg + std_dev:.2f}<extra></extra>'
+                        hovertemplate=f'Your Avg: {player_avg:.2f}<extra></extra>'
                     ))
 
                 # Create dropdown buttons
                 dropdown_buttons = []
                 for i, metric in enumerate(metrics):
-                    # Create visibility array - 4 traces per metric (curve, avg, -1sd, +1sd)
-                    visible = [False] * (len(metrics) * 4)
-                    visible[i * 4] = True  # Distribution curve
-                    visible[i * 4 + 1] = True  # Your average line
-                    visible[i * 4 + 2] = True  # -1 SD line
-                    visible[i * 4 + 3] = True  # +1 SD line
+                    # Count traces per metric: 1 curve + 5 percentiles (P10, P25, P50, P75, P90) + 1 player avg = 7 traces
+                    traces_per_metric = 7
+                    visible = [False] * (len(metrics) * traces_per_metric)
+
+                    # Make all traces for this metric visible
+                    for j in range(traces_per_metric):
+                        visible[i * traces_per_metric + j] = True
 
                     dropdown_buttons.append({
                         'label': metric['name'],
@@ -443,14 +512,14 @@ def create_visualizations(player_id):
                             {
                                 'xaxis.title.text': metric['name'],
                                 'yaxis.title.text': 'Probability Density',
-                                'title.text': f"{metric['name']} Probability Distribution Function"  # Dynamic title
+                                'title.text': f"{metric['name']} Compared To Community Distribution"
                             }
                         ]
                     })
 
                 # Update layout
                 fig4_5.update_layout(
-                    title=f"{metrics[0]['name']} Probability Distribution Function",
+                    title=f"{metrics[0]['name']} Compared To Community Distribution",
                     xaxis_title=metrics[0]['name'],
                     yaxis_title='Probability Density',
                     xaxis=dict(
@@ -478,11 +547,11 @@ def create_visualizations(player_id):
                     }],
                     showlegend=True,
                     legend=dict(
-                        orientation='h',
-                        yanchor='bottom',
-                        y=-0.25,
-                        xanchor='center',
-                        x=0.5,
+                        orientation='v',
+                        yanchor='top',
+                        y=0.98,
+                        xanchor='left',
+                        x=0.02,
                         bgcolor='rgba(27, 40, 56, 0.9)',
                         bordercolor='#3d4e5c',
                         borderwidth=1
@@ -591,6 +660,90 @@ def create_visualizations(player_id):
                 print(f"First trace has {len(fig6.data[0].x)} data points")
             charts['kda_trend'] = json.dumps(fig6, cls=PlotlyJSONEncoder)
 
+        # Chart 6: MMR History
+        if mmr_history and len(mmr_history) > 0:
+            print(f"MMR history records: {len(mmr_history)}")
+
+            df_mmr = pd.json_normalize(mmr_history)
+            df_mmr['start_ts'] = pd.to_datetime(df_mmr['start_time'], unit='s')
+            df_mmr = df_mmr.sort_values('start_ts')
+
+            # Set timestamp as index for rolling window
+            df_mmr = df_mmr.set_index('start_ts')
+
+            # Calculate 7-day rolling average
+            window = '7D'
+            df_mmr['mmr_avg'] = df_mmr['player_score'].rolling(window=window, min_periods=1).mean()
+            df_mmr['rank_avg'] = df_mmr['rank'].rolling(window=window, min_periods=1).mean()
+
+            # Reset index
+            df_mmr = df_mmr.reset_index()
+
+            print(f"MMR range: {df_mmr['player_score'].min():.2f} - {df_mmr['player_score'].max():.2f}")
+
+            fig7 = go.Figure()
+
+            # Add 7-day rolling average MMR line (bold)
+            fig7.add_trace(go.Scatter(
+                x=df_mmr['start_ts'].tolist(),
+                y=df_mmr['mmr_avg'].tolist(),
+                mode='lines',
+                name='MMR (7-day avg)',
+                line=dict(color='#f59e0b', width=3),
+                hovertemplate='<b>MMR (7-day avg): %{y:.2f}</b><br>Date: %{x}<extra></extra>'
+            ))
+
+            # Add raw MMR points (faint)
+            fig7.add_trace(go.Scatter(
+                x=df_mmr['start_ts'].tolist(),
+                y=df_mmr['player_score'].tolist(),
+                mode='markers',
+                name='MMR (per match)',
+                marker=dict(size=4, color='#f59e0b', opacity=0.3),
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+
+            # Add rank information as secondary trace (optional)
+            fig7.add_trace(go.Scatter(
+                x=df_mmr['start_ts'].tolist(),
+                y=df_mmr['rank_avg'].tolist(),
+                mode='lines',
+                name='Rank (7-day avg)',
+                line=dict(color='#8b5cf6', width=2),
+                yaxis='y2',
+                hovertemplate='<b>Rank (7-day avg): %{y:.1f}</b><br>Date: %{x}<extra></extra>',
+                visible='legendonly'  # Hidden by default
+            ))
+
+            fig7.update_layout(
+                title='MMR History',
+                xaxis_title='Date',
+                yaxis=dict(
+                    title=dict(text='MMR (Player Score)', font=dict(color='#f59e0b')),
+                    tickfont=dict(color='#f59e0b')
+                ),
+                yaxis2=dict(
+                    title=dict(text='Rank', font=dict(color='#8b5cf6')),
+                    tickfont=dict(color='#8b5cf6'),
+                    overlaying='y',
+                    side='right'
+                ),
+                hovermode='x unified',
+                showlegend=True,
+                legend=dict(
+                    orientation='h',
+                    yanchor='bottom',
+                    y=1.02,
+                    xanchor='right',
+                    x=1
+                ),
+                height=500
+            )
+
+            print(f"MMR chart created with {len(fig7.data)} traces")
+            charts['mmr_history'] = json.dumps(fig7, cls=PlotlyJSONEncoder)
+
         # Player Stats Summary (calculated from match history)
         summary = {}
         if not df_match_history.empty and 'result' in df_match_history.columns:
@@ -609,6 +762,85 @@ def create_visualizations(player_id):
                 'avg_assists': f"{df_match_history['player_assists'].mean():.1f}",
             }
 
+        # Calculate top 5 heroes by games played
+        top_heroes = []
+        print(f"Top heroes check: df_match_history empty={df_match_history.empty}, hero_names={bool(hero_names)}, has hero_name={'hero_name' in df_match_history.columns if not df_match_history.empty else 'N/A'}")
+
+        if not df_match_history.empty and hero_names and 'hero_name' in df_match_history.columns:
+            # Group by hero_name and calculate stats
+            hero_stats = df_match_history.groupby('hero_name').agg({
+                'match_id': 'count',  # Total matches
+                'result': lambda x: (x == 'Win').sum()  # Total wins
+            }).rename(columns={'match_id': 'matches', 'result': 'wins'})
+
+            # Calculate win rate
+            hero_stats['win_rate'] = (hero_stats['wins'] / hero_stats['matches'] * 100).round(1)
+
+            # Sort by matches played and get top 5
+            hero_stats = hero_stats.sort_values('matches', ascending=False).head(5)
+
+            # Create heroes DataFrame for lookup
+            df_heroes = pd.json_normalize(hero_names) if hero_names else pd.DataFrame()
+
+            # Build top heroes list with icons from heroes endpoint
+            for hero_name, hero_stats_row in hero_stats.iterrows():
+                # Get hero data including images
+                hero_info = df_heroes[df_heroes['name'] == hero_name]
+                icon_url = None
+
+                if not hero_info.empty:
+                    hero_row = hero_info.iloc[0]
+
+                    # Access flattened image columns (json_normalize creates 'images.key_name' columns)
+                    # Try different image types in order of preference
+                    for img_key in ['images.icon_hero_card', 'images.icon_image_small', 'images.minimap_image', 'images.selection_image']:
+                        if img_key in hero_row.index and pd.notna(hero_row[img_key]) and hero_row[img_key]:
+                            icon_url = hero_row[img_key]
+                            print(f"Found icon for {hero_name}: {img_key}")
+                            break
+
+                if not icon_url:
+                    print(f"No icon found for {hero_name}")
+
+                top_heroes.append({
+                    'name': hero_name,
+                    'matches': int(hero_stats_row['matches']),
+                    'win_rate': f"{hero_stats_row['win_rate']:.1f}%",
+                    'icon_url': icon_url
+                })
+
+            print(f"Top 5 heroes calculated: {[h['name'] for h in top_heroes]}")
+
+        # Extract rank badge from latest game
+        rank_badge_url = None
+        rank_name = None
+        rank_division_tier = None
+        if mmr_history and len(mmr_history) > 0 and ranks_data:
+            # Get latest game (last in list)
+            latest_game = mmr_history[-1]
+            division = latest_game.get('division')  # This is the tier (0-11)
+            division_tier = latest_game.get('division_tier', 0)  # This is the subrank (1-6)
+
+            print(f"Player division: {division}, division_tier: {division_tier}")
+
+            # Find matching rank in ranks_data
+            for rank in ranks_data:
+                if rank.get('tier') == division:
+                    rank_name = rank.get('name', 'Unknown')
+                    rank_division_tier = division_tier
+                    images = rank.get('images', {})
+
+                    # Get subrank badge if division_tier exists
+                    if division_tier > 0:
+                        badge_key = f'small_subrank{division_tier}'
+                        rank_badge_url = images.get(badge_key) or images.get('small')
+                    else:
+                        rank_badge_url = images.get('small')
+
+                    print(f"Matched rank: {rank_name} (division {division}, tier {division_tier})")
+                    print(f"Badge URL: {rank_badge_url}")
+                    break
+
         # Extract Steam profile data
         steam_data = {}
         if steam_profile:
@@ -626,6 +858,9 @@ def create_visualizations(player_id):
                     steam_data = {
                         'username': matching_profile.get('personaname', 'Unknown Player'),
                         'avatar_full': matching_profile.get('avatarfull', ''),
+                        'rank_badge': rank_badge_url,
+                        'rank_name': rank_name,
+                        'rank_division_tier': rank_division_tier,
                     }
                     print(f"Found Steam profile: {steam_data['username']}")
                 else:
@@ -636,15 +871,18 @@ def create_visualizations(player_id):
                     steam_data = {
                         'username': steam_profile.get('personaname', 'Unknown Player'),
                         'avatar_full': steam_profile.get('avatarfull', ''),
+                        'rank_badge': rank_badge_url,
+                        'rank_name': rank_name,
+                        'rank_division_tier': rank_division_tier,
                     }
 
-        return charts, summary, steam_data
+        return charts, summary, steam_data, top_heroes
 
     except Exception as e:
         print(f"Error creating visualizations: {e}")
         import traceback
         traceback.print_exc()
-        return None, None, str(e)
+        return None, None, str(e), []
 
 
 @app.route('/')
@@ -661,12 +899,12 @@ def analyze():
     if not player_id:
         return render_template('index.html', error="Please enter a valid Player ID")
 
-    charts, summary, steam_data = create_visualizations(player_id)
+    charts, summary, steam_data, top_heroes = create_visualizations(player_id)
 
     if charts is None:
         return render_template('index.html', error=f"Error fetching data: {steam_data}")
 
-    return render_template('results.html', player_id=player_id, charts=charts, summary=summary, steam_data=steam_data)
+    return render_template('results.html', player_id=player_id, charts=charts, summary=summary, steam_data=steam_data, top_heroes=top_heroes)
 
 
 if __name__ == '__main__':

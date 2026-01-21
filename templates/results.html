@@ -58,6 +58,7 @@
             display: flex;
             flex-direction: column;
             gap: 5px;
+            text-align: left;
         }
 
         .player-username {
@@ -65,6 +66,18 @@
             font-size: 1.95em;
             font-weight: 400;
             letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            justify-content: flex-start;
+        }
+
+        .rank-badge {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+            margin-top: -8px;
+            cursor: pointer;
         }
 
         .player-steam-id {
@@ -84,10 +97,10 @@
             left: 50%;
             top: 45%;
             transform: translate(-50%, -50%);
-            max-width: 180px;
-            height: auto;
-            opacity: 0.9;
-            transition: opacity 0.2s ease;
+            height: 120px;
+            width: auto;
+            opacity: 0.6;
+            transition: opacity 0.3s ease;
         }
 
         .dashboard-logo:hover {
@@ -200,6 +213,17 @@
             box-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
         }
 
+        .map-chart-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .map-chart-container #chart4 {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
         .chart-row {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -284,6 +308,91 @@
         .js-plotly-plot .plotly .modebar-btn:hover path {
             fill: #ffffff !important;
         }
+
+        .top-heroes-container {
+            background: linear-gradient(to bottom, #2a475e 0%, #1b2838 100%);
+            border: 1px solid #3d4e5c;
+            border-radius: 4px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+            padding: 30px;
+            margin: 30px 0;
+        }
+
+        .top-heroes-section {
+            margin: 0;
+        }
+
+        .top-heroes-title {
+            color: #66c0f4;
+            font-size: 1.8em;
+            font-weight: 400;
+            letter-spacing: 0.5px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .top-heroes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .hero-card {
+            background: linear-gradient(to bottom, #2a475e 0%, #1b2838 100%);
+            border: 1px solid #3d4e5c;
+            border-radius: 4px;
+            padding: 20px;
+            text-align: center;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .hero-card:hover {
+            transform: translateY(-5px);
+            border-color: #66c0f4;
+        }
+
+        .hero-icon {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            border: 2px solid #3d4e5c;
+        }
+
+        .hero-name {
+            color: #c7d5e0;
+            font-size: 1.2em;
+            font-weight: 400;
+            margin-bottom: 10px;
+        }
+
+        .hero-stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 15px;
+        }
+
+        .hero-stat {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .hero-stat-label {
+            color: #8f98a0;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .hero-stat-value {
+            color: #66c0f4;
+            font-size: 1.1em;
+            font-weight: 400;
+        }
     </style>
 </head>
 <body>
@@ -293,12 +402,17 @@
             <div class="player-profile">
                 <img src="{{ steam_data.avatar_full }}" alt="Player Avatar" class="player-avatar">
                 <div class="player-info">
-                    <div class="player-username">{{ steam_data.username }}</div>
+                    <div class="player-username">
+                        {{ steam_data.username }}
+                        {% if steam_data.rank_badge %}
+                        <img src="{{ steam_data.rank_badge }}" alt="{{ steam_data.rank_name }}" class="rank-badge" title="{{ steam_data.rank_name }}{% if steam_data.rank_division_tier %} {{ steam_data.rank_division_tier }}{% endif %}">
+                        {% endif %}
+                    </div>
                     <p class="player-steam-id">Steam ID: <span>{{ player_id }}</span></p>
                 </div>
             </div>
             {% endif %}
-            <img src="/static/img/deadlock-logo.png" alt="Deadlock" class="dashboard-logo">
+            <img src="/static/img/deadlock-logo-no-title-flat.png" alt="Deadlock" class="dashboard-logo">
             <div class="back-button-container">
                 <a href="/" class="back-button">Analyze Another Player</a>
             </div>
@@ -337,6 +451,34 @@
         </div>
         {% endif %}
 
+        {% if top_heroes %}
+        <div class="top-heroes-container">
+            <div class="top-heroes-section">
+                <h2 class="top-heroes-title">Top 5 Heroes by Games Played</h2>
+                <div class="top-heroes-grid">
+                    {% for hero in top_heroes %}
+                    <div class="hero-card">
+                        {% if hero.icon_url %}
+                        <img src="{{ hero.icon_url }}" alt="{{ hero.name }}" class="hero-icon">
+                        {% endif %}
+                        <div class="hero-name">{{ hero.name }}</div>
+                        <div class="hero-stats">
+                            <div class="hero-stat">
+                                <div class="hero-stat-label">Matches</div>
+                                <div class="hero-stat-value">{{ hero.matches }}</div>
+                            </div>
+                            <div class="hero-stat">
+                                <div class="hero-stat-label">Win Rate</div>
+                                <div class="hero-stat-value">{{ hero.win_rate }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         {% if charts %}
             {% if charts.win_loss_timeline %}
             <div class="chart-container">
@@ -350,25 +492,27 @@
             </div>
             {% endif %}
 
-            {% if charts.kd_stats or charts.percentile_dist %}
-            <div class="chart-row">
-                {% if charts.kd_stats %}
-                <div class="chart-container">
-                    <div id="chart4"></div>
-                </div>
-                {% endif %}
-
-                {% if charts.percentile_dist %}
-                <div class="chart-container">
-                    <div id="chart4_5"></div>
-                </div>
-                {% endif %}
+            {% if charts.percentile_dist %}
+            <div class="chart-container">
+                <div id="chart4_5"></div>
             </div>
             {% endif %}
 
             {% if charts.kda_trend %}
             <div class="chart-container">
                 <div id="chart6"></div>
+            </div>
+            {% endif %}
+
+            {% if charts.mmr_history %}
+            <div class="chart-container">
+                <div id="chart7"></div>
+            </div>
+            {% endif %}
+
+            {% if charts.kd_stats %}
+            <div class="chart-container map-chart-container">
+                <div id="chart4"></div>
             </div>
             {% endif %}
         {% else %}
@@ -480,6 +624,12 @@
             var chart6 = {{ charts.kda_trend | safe }};
             applySteamTheme(chart6.layout, false);
             Plotly.newPlot('chart6', chart6.data, chart6.layout, {displayModeBar: true, displaylogo: false});
+            {% endif %}
+
+            {% if charts.mmr_history %}
+            var chart7 = {{ charts.mmr_history | safe }};
+            applySteamTheme(chart7.layout, false);
+            Plotly.newPlot('chart7', chart7.data, chart7.layout, {displayModeBar: true, displaylogo: false});
             {% endif %}
         {% endif %}
     </script>
