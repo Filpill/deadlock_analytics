@@ -1,0 +1,246 @@
+# Claude Code Configuration for Deadlock Analytics
+
+## Project Overview
+This is a Python-based analytics project for analyzing Deadlock game data using the official Deadlock API. The project includes both a Flask web application for interactive data visualization and Marimo notebooks for exploratory analysis.
+
+## Development Environment
+- **Python version**: 3.12+ (managed by .python-version)
+- **Package manager**: uv (fast Python package installer)
+- **Virtual environment**: .venv
+- **Web framework**: Flask
+- **Visualization**: Plotly (interactive charts)
+- **Data processing**: pandas
+- **Notebook tool**: marimo (reactive notebooks)
+
+## Code Style Guidelines
+- Follow PEP 8 for Python code
+- Use type hints where appropriate
+- Keep functions focused and modular
+- Use meaningful variable names (e.g., `df_match_history` not `df1`)
+
+## Game-Specific Terminology
+- **Souls**: In-game currency (NOT "Gold")
+- **Net Worth**: Total Souls earned by a player
+- **KDA**: Kills, Deaths, Assists
+- **Hero**: Playable character
+- **Match Result**: 0 or 1 (compare with player_team to determine win/loss)
+
+## API Information
+- **Data API**: api.deadlock-api.com
+- **Assets API**: assets.deadlock-api.com
+- **Documentation**:
+  - Scalar: https://assets.deadlock-api.com/scalar
+  - OpenAPI: https://api.deadlock-api.com/docs
+- **Schema Reference**: See `/docs/api_schema_reference.md`
+
+## Project Structure
+```
+deadlock-analytics/
+├── app.py                      # Main Flask application
+├── templates/                  # HTML templates for Flask
+│   ├── index.html             # Landing page with player ID input
+│   └── results.html           # Analytics dashboard
+├── static/                     # Static assets
+│   └── img/
+│       ├── minimap.png        # Deadlock minimap (512x512)
+│       └── deadlock-logo.png  # Deadlock logo for branding
+├── scripts/                    # Analysis scripts
+│   ├── deadlock_notebook.py  # Original marimo notebook
+│   └── analyze_schema.py     # API schema analysis tool
+├── docs/                       # Documentation
+│   └── api_schema_reference.md # API endpoint schemas
+├── __marimo__/                # Marimo notebook cache
+├── .venv/                     # Virtual environment
+├── pyproject.toml             # Dependencies
+└── uv.lock                    # Locked dependency versions
+```
+
+## Flask Web Application
+
+### Running the App
+```bash
+source .venv/bin/activate
+python app.py
+# Visit http://localhost:5000
+```
+
+### Features
+The Flask app provides an interactive analytics dashboard with:
+
+**Header Section:**
+- Player profile with Steam avatar and username (left)
+- Deadlock logo (center)
+- "Analyze Another Player" button (right)
+- 5 KPI tiles: Total Matches, Wins, Losses, Win Rate, Avg K/D/A
+
+**Charts:**
+1. **Number of Matches Played** - Histogram showing win/loss distribution over time
+2. **Performance Curve** - Average metrics over game time with dropdown selector:
+   - Net Worth (Souls)
+   - Kills
+   - Deaths
+   - Assists
+   - Dynamically updates title: "Average {Metric} Over Game Time"
+3. **Kill and Death Locations** - Scatter plot overlaid on minimap (600x600px)
+   - Legend positioned in top right inside chart
+4. **Player Percentile Distribution** - Normal distribution with dropdown selector (600px height)
+   - Shows player's personal variance across matches (NOT community distribution)
+   - Includes ±1 standard deviation reference lines
+   - Dynamically updates title: "{Metric} Probability Distribution Function"
+5. **KDA Trend Over Time** - 7-day rolling average with raw data scatter points
+   - Hover only works on average lines, not scatter points
+
+### Key Endpoints
+- `/` - Home page with player ID input
+- `/analyze` (POST) - Generate analytics for a player
+
+## Data Flow
+
+1. **User Input**: Player enters SteamID3 format player ID (e.g., 199540209)
+2. **API Calls**: Flask app fetches data from multiple endpoints:
+   - `/v2/heroes` - Hero names and metadata
+   - `/v1/players/{id}/match-history` - Match details
+   - `/v1/players/steam-search?search_query={id}` - Steam profile (username, avatar)
+   - `/v1/analytics/player-stats/metrics` - Player statistics with percentiles
+   - `/v1/analytics/player-performance-curve` - Performance over game time
+   - `/v1/analytics/kill-death-stats` - Spatial kill/death data
+3. **Data Processing**: pandas DataFrames with joins and transformations
+4. **Steam Profile Filtering**: Filter steam-search results by matching account_id
+5. **Visualization**: Plotly charts rendered in browser with Steam theme
+6. **Display**: Interactive dashboard with player profile and multiple charts
+
+## Important Implementation Details
+
+### Match Result Logic
+```python
+# Win determination
+df['result'] = df.apply(
+    lambda row: 'Win' if row['player_team'] == row['match_result'] else 'Loss',
+    axis=1
+)
+```
+
+### Time-Based Rolling Average
+```python
+# 7-day rolling window
+df['kills_avg'] = df['player_kills'].rolling(window='7D', min_periods=1).mean()
+```
+
+### Hero Name Joins
+```python
+# Match history needs hero names
+df_match = pd.merge(
+    df_match_history,
+    df_heroes[['id', 'name']],
+    left_on='hero_id',
+    right_on='id',
+    how='left'
+)
+```
+
+### Minimap Overlay
+- Map coordinates range from approximately -10,000 to 10,000
+- Minimap image positioned at full coordinate range
+- Scatter markers overlaid using Scattergl for performance
+
+### Steam Profile Integration
+```python
+# Fetch Steam profile data
+steam_profile = get_request_data(connection, "data-api", "steam_search")
+
+# Filter by account_id to get correct player
+for profile in steam_profile:
+    if str(profile.get('account_id', '')) == str(player_id):
+        steam_data = {
+            'username': profile.get('personaname', 'Unknown Player'),
+            'avatar_full': profile.get('avatarfull', ''),
+        }
+```
+
+### Dynamic Chart Titles
+```python
+# Performance Curve dropdown updates title dynamically
+'title.text': f"Average {metric['name']} Over Game Time"
+
+# Distribution chart dropdown updates title dynamically
+'title.text': f"{metric['name']} Probability Distribution Function"
+```
+
+### Distribution Chart Interpretation
+**IMPORTANT**: The distribution chart shows the player's personal performance variance across their own matches, NOT the community distribution. The curve is centered on the player's average because it uses their personal mean and standard deviation:
+```python
+avg = float(df_player_stats[f'{metric_key}.avg'].iloc[0])  # Player's average
+std_dev = float(df_player_stats[f'{metric_key}.std'].iloc[0])  # Player's std dev
+x_range = np.linspace(avg - 4*std_dev, avg + 4*std_dev, 200)
+y_range = stats.norm.pdf(x_range, avg, std_dev)
+```
+The percentile data from the API (percentile1, percentile5, etc.) represents community benchmarks but is not currently used to generate the curve.
+
+### Steam Theme Styling
+- Dark blue gradients: `#1b2838`, `#16202d`, `#2a475e`
+- Steam blue highlights: `#66c0f4`
+- Font: Motiva Sans (Steam's official font)
+- Chart titles: 22px, Steam blue (#66c0f4)
+- Container max-width: 1200px
+- Header padding: 50px
+- Chart heights: 600px for side-by-side charts (Kill/Death Map, Distribution)
+- JavaScript `applySteamTheme()` function preserves chart properties while applying colors
+
+## Dependencies
+- **Flask**: Web framework
+- **Plotly**: Interactive visualizations
+- **pandas**: Data manipulation
+- **numpy**: Numerical computing for distribution calculations
+- **scipy**: Statistical functions (stats.norm.pdf for distribution curves)
+- **marimo**: Reactive notebooks
+- **deadlock-api-client**: Official API client (from Git)
+
+Add new dependencies:
+```bash
+uv add <package-name>
+```
+
+## Testing
+- Test API calls with `scripts/analyze_schema.py`
+- Verify chart data by checking terminal debug output
+- Use sample player ID: 199540209
+
+## Common Tasks
+
+### Add a new chart
+1. Fetch data in `create_visualizations()` function
+2. Create Plotly figure object
+3. Add to `charts` dictionary with unique key
+4. Add HTML container in `results.html`
+5. Add Plotly rendering code in JavaScript section
+
+### Modify existing chart
+1. Update chart creation in `app.py`
+2. Adjust layout, colors, or data transformations
+3. Test with sample player ID
+4. Check browser console for JavaScript errors
+
+### Update API endpoints
+1. Modify endpoint URLs in `get_api_connection()`
+2. Update data fetching in `create_visualizations()`
+3. Update schema documentation in `/docs/`
+
+## Troubleshooting
+
+### Charts not displaying
+- Check terminal for debug output (print statements)
+- Verify data shape and columns
+- Check browser console for errors
+- Ensure `.tolist()` is called when passing data to Plotly
+
+### API errors
+- Verify player ID format (SteamID3)
+- Check API status at deadlock-api.com
+- Review rate limits
+- Check terminal for HTTP status codes
+
+### Minimap not loading
+- Verify `/static/img/minimap.png` exists
+- Check file permissions
+- Verify Flask static folder configuration
+- Test URL: http://localhost:5000/static/img/minimap.png

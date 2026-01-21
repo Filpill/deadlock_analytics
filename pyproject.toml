@@ -6,8 +6,12 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "deadlock-api-client",
+    "flask>=3.1.2",
     "marimo>=0.19.4",
+    "numpy>=2.4.1",
     "pandas>=2.3.3",
+    "plotly>=6.5.2",
+    "scipy>=1.17.0",
 ]
 
 [tool.uv.sources]

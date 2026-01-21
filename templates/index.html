@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deadlock Analytics</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Motiva Sans', 'Arial', sans-serif;
+            background: linear-gradient(to bottom, #1b2838 0%, #16202d 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            color: #c7d5e0;
+        }
+
+        .container {
+            background: linear-gradient(to bottom, #2a475e 0%, #1b2838 100%);
+            border-radius: 4px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            padding: 60px 50px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+            border: 1px solid #3d4e5c;
+        }
+
+        h1 {
+            color: #66c0f4;
+            margin-bottom: 10px;
+            font-size: 2.8em;
+            font-weight: 300;
+            letter-spacing: 1px;
+            text-shadow: 0 0 20px rgba(102, 192, 244, 0.4);
+        }
+
+        .subtitle {
+            color: #8f98a0;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+            font-weight: 300;
+        }
+
+        .form-group {
+            margin-bottom: 30px;
+        }
+
+        label {
+            display: block;
+            text-align: left;
+            margin-bottom: 12px;
+            color: #c7d5e0;
+            font-weight: 400;
+            font-size: 1em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.9em;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 16px 20px;
+            background: #16202d;
+            border: 1px solid #3d4e5c;
+            border-radius: 3px;
+            font-size: 1.1em;
+            color: #c7d5e0;
+            transition: all 0.2s ease;
+            font-family: 'Motiva Sans', 'Arial', sans-serif;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #66c0f4;
+            background: #1b2838;
+            box-shadow: 0 0 10px rgba(102, 192, 244, 0.2);
+        }
+
+        input[type="text"]::placeholder {
+            color: #5c7a8a;
+        }
+
+        button {
+            width: 100%;
+            padding: 16px 20px;
+            background: linear-gradient(to right, #47bfff 5%, #1a44c2 60%);
+            background-position: 25%;
+            background-size: 330% 100%;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            font-size: 1.1em;
+            font-weight: 400;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-family: 'Motiva Sans', 'Arial', sans-serif;
+            box-shadow: 0 0 15px rgba(102, 192, 244, 0.3);
+        }
+
+        button:hover {
+            background-position: 0%;
+            box-shadow: 0 0 25px rgba(102, 192, 244, 0.5);
+        }
+
+        button:active {
+            background-position: 0%;
+            box-shadow: 0 0 10px rgba(102, 192, 244, 0.7);
+        }
+
+        .error {
+            background: linear-gradient(to right, rgba(199, 48, 48, 0.2), rgba(199, 48, 48, 0.1));
+            border: 1px solid #c73030;
+            color: #ff6b6b;
+            padding: 15px;
+            border-radius: 3px;
+            margin-bottom: 25px;
+            text-align: left;
+        }
+
+        .info-box {
+            background: rgba(22, 32, 45, 0.6);
+            border: 1px solid #3d4e5c;
+            border-radius: 3px;
+            padding: 25px;
+            margin-top: 35px;
+            text-align: left;
+        }
+
+        .info-box h3 {
+            color: #66c0f4;
+            margin-bottom: 15px;
+            font-weight: 400;
+            font-size: 1.1em;
+            letter-spacing: 0.5px;
+        }
+
+        .info-box p {
+            color: #c7d5e0;
+            line-height: 1.8;
+            margin-bottom: 12px;
+            font-size: 0.95em;
+        }
+
+        .info-box ul {
+            padding-left: 25px;
+            color: #c7d5e0;
+            line-height: 1.8;
+        }
+
+        .info-box li {
+            margin-bottom: 8px;
+        }
+
+        .info-box code {
+            background: #1b2838;
+            border: 1px solid #3d4e5c;
+            padding: 3px 8px;
+            border-radius: 2px;
+            font-family: 'Courier New', monospace;
+            color: #66c0f4;
+            font-size: 0.95em;
+        }
+
+        .steam-badge {
+            display: inline-block;
+            background: linear-gradient(to right, rgba(102, 192, 244, 0.1), rgba(102, 192, 244, 0.05));
+            border: 1px solid rgba(102, 192, 244, 0.3);
+            padding: 4px 12px;
+            border-radius: 2px;
+            font-size: 0.75em;
+            color: #66c0f4;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="steam-badge">Powered by Deadlock API</div>
+        <h1>Deadlock Analytics</h1>
+        <p class="subtitle">Advanced player statistics and performance analysis</p>
+
+        {% if error %}
+        <div class="error">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/analyze">
+            <div class="form-group">
+                <label for="player_id">Player ID (SteamID3 Format)</label>
+                <input type="text"
+                       id="player_id"
+                       name="player_id"
+                       placeholder="e.g., 199540209"
+                       required
+                       autocomplete="off">
+            </div>
+
+            <button type="submit">Analyze Player Stats</button>
+        </form>
+
+        <div class="info-box">
+            <h3>How to find your Player ID</h3>
+            <p>Your Player ID is in SteamID3 format. You can find it by:</p>
+            <ul>
+                <li>Checking your Steam profile URL</li>
+                <li>Using a SteamID converter tool</li>
+                <li>Looking at in-game profile information</li>
+            </ul>
+            <p style="margin-top: 15px;"><strong>Example:</strong> <code>199540209</code></p>
+        </div>
+    </div>
+</body>
+</html>

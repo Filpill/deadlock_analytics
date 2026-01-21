@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player Analytics - {{ player_id }}</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Motiva Sans', 'Arial', sans-serif;
+            background: linear-gradient(to bottom, #1b2838 0%, #16202d 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #c7d5e0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: linear-gradient(to bottom, #2a475e 0%, #1b2838 100%);
+            border: 1px solid #3d4e5c;
+            border-radius: 4px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            padding: 50px;
+            margin-bottom: 30px;
+            text-align: center;
+            position: relative;
+        }
+
+        .player-profile {
+            position: absolute;
+            left: 40px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .player-avatar {
+            width: 120px;
+            height: 120px;
+            border-radius: 4px;
+            border: 2px solid #66c0f4;
+            box-shadow: 0 0 15px rgba(102, 192, 244, 0.3);
+        }
+
+        .player-info {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .player-username {
+            color: #c7d5e0;
+            font-size: 1.95em;
+            font-weight: 400;
+            letter-spacing: 0.5px;
+        }
+
+        .player-steam-id {
+            color: #8f98a0;
+            font-size: 0.95em;
+            font-weight: 300;
+            letter-spacing: 0.5px;
+        }
+
+        .player-steam-id span {
+            color: #66c0f4;
+            font-weight: 400;
+        }
+
+        .dashboard-logo {
+            position: absolute;
+            left: 50%;
+            top: 45%;
+            transform: translate(-50%, -50%);
+            max-width: 180px;
+            height: auto;
+            opacity: 0.9;
+            transition: opacity 0.2s ease;
+        }
+
+        .dashboard-logo:hover {
+            opacity: 1;
+        }
+
+        .back-button-container {
+            position: absolute;
+            right: 40px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+
+        .back-button {
+            display: inline-block;
+            padding: 12px 35px;
+            background: linear-gradient(to right, #47bfff 5%, #1a44c2 60%);
+            background-position: 25%;
+            background-size: 330% 100%;
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+            font-weight: 400;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.9em;
+            box-shadow: 0 0 10px rgba(102, 192, 244, 0.2);
+        }
+
+        .back-button:hover {
+            background-position: 0%;
+            box-shadow: 0 0 20px rgba(102, 192, 244, 0.4);
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .kda-values {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .kda-values .value {
+            font-size: 2.2em;
+        }
+
+        .kda-values .separator {
+            color: #5c7a8a;
+            font-size: 2em;
+            font-weight: 300;
+        }
+
+        .summary-card {
+            background: linear-gradient(to bottom, rgba(42, 71, 94, 0.8) 0%, rgba(27, 40, 56, 0.8) 100%);
+            border: 1px solid #3d4e5c;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+
+        .summary-card:hover {
+            border-color: #66c0f4;
+            box-shadow: 0 0 15px rgba(102, 192, 244, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .summary-card h3 {
+            color: #8f98a0;
+            font-size: 0.75em;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+            letter-spacing: 1px;
+            font-weight: 400;
+        }
+
+        .summary-card .value {
+            color: #c7d5e0;
+            font-size: 2.2em;
+            font-weight: 300;
+            letter-spacing: 1px;
+        }
+
+        .summary-card.win-rate .value {
+            color: #66c0f4;
+            text-shadow: 0 0 10px rgba(102, 192, 244, 0.3);
+        }
+
+        .chart-container {
+            background: linear-gradient(to bottom, rgba(42, 71, 94, 0.6) 0%, rgba(27, 40, 56, 0.6) 100%);
+            border: 1px solid #3d4e5c;
+            border-radius: 4px;
+            box-shadow: 0 2px 15px rgba(0, 0, 0, 0.4);
+            padding: 25px;
+            margin-bottom: 25px;
+            transition: all 0.2s ease;
+        }
+
+        .chart-container:hover {
+            border-color: #4a5f73;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .chart-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+
+        .chart-row .chart-container {
+            margin-bottom: 0;
+        }
+
+        .chart-title {
+            color: #66c0f4;
+            font-size: 1.3em;
+            margin-bottom: 20px;
+            font-weight: 300;
+            letter-spacing: 0.5px;
+        }
+
+        .no-data {
+            text-align: center;
+            color: #5c7a8a;
+            padding: 60px;
+            font-style: italic;
+            font-size: 1.1em;
+        }
+
+        @media (max-width: 1400px) {
+            .summary-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 1024px) {
+            .summary-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                padding: 30px 20px;
+            }
+
+            .player-profile {
+                display: none;
+            }
+
+            .dashboard-logo {
+                display: none;
+            }
+
+            .back-button-container {
+                display: none;
+            }
+
+            .summary-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .chart-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Update Plotly chart styling */
+        .js-plotly-plot .plotly .modebar {
+            background: rgba(27, 40, 56, 0.9) !important;
+            border: 1px solid #3d4e5c !important;
+        }
+
+        .js-plotly-plot .plotly .modebar-btn path {
+            fill: #66c0f4 !important;
+        }
+
+        .js-plotly-plot .plotly .modebar-btn:hover path {
+            fill: #ffffff !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            {% if steam_data and steam_data.avatar_full %}
+            <div class="player-profile">
+                <img src="{{ steam_data.avatar_full }}" alt="Player Avatar" class="player-avatar">
+                <div class="player-info">
+                    <div class="player-username">{{ steam_data.username }}</div>
+                    <p class="player-steam-id">Steam ID: <span>{{ player_id }}</span></p>
+                </div>
+            </div>
+            {% endif %}
+            <img src="/static/img/deadlock-logo.png" alt="Deadlock" class="dashboard-logo">
+            <div class="back-button-container">
+                <a href="/" class="back-button">Analyze Another Player</a>
+            </div>
+        </div>
+
+        {% if summary %}
+        <div class="summary-grid">
+            <div class="summary-card">
+                <h3>Total Matches</h3>
+                <div class="value">{{ summary.total_matches }}</div>
+            </div>
+            <div class="summary-card">
+                <h3>Wins</h3>
+                <div class="value" style="color: #5cc85c;">{{ summary.wins }}</div>
+            </div>
+            <div class="summary-card">
+                <h3>Losses</h3>
+                <div class="value" style="color: #d94040;">{{ summary.losses }}</div>
+            </div>
+            <div class="summary-card win-rate">
+                <h3>Win Rate</h3>
+                <div class="value">{{ summary.win_rate }}</div>
+            </div>
+            {% if summary.avg_kills and summary.avg_deaths and summary.avg_assists %}
+            <div class="summary-card">
+                <h3>Avg K / D / A</h3>
+                <div class="kda-values">
+                    <span class="value" style="color: #5cc85c;">{{ summary.avg_kills }}</span>
+                    <span class="separator">/</span>
+                    <span class="value" style="color: #d94040;">{{ summary.avg_deaths }}</span>
+                    <span class="separator">/</span>
+                    <span class="value" style="color: #66c0f4;">{{ summary.avg_assists }}</span>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if charts %}
+            {% if charts.win_loss_timeline %}
+            <div class="chart-container">
+                <div id="chart1"></div>
+            </div>
+            {% endif %}
+
+            {% if charts.performance_curve %}
+            <div class="chart-container">
+                <div id="chart3"></div>
+            </div>
+            {% endif %}
+
+            {% if charts.kd_stats or charts.percentile_dist %}
+            <div class="chart-row">
+                {% if charts.kd_stats %}
+                <div class="chart-container">
+                    <div id="chart4"></div>
+                </div>
+                {% endif %}
+
+                {% if charts.percentile_dist %}
+                <div class="chart-container">
+                    <div id="chart4_5"></div>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if charts.kda_trend %}
+            <div class="chart-container">
+                <div id="chart6"></div>
+            </div>
+            {% endif %}
+        {% else %}
+            <div class="chart-container">
+                <p class="no-data">No chart data available</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // Deep merge function to preserve existing properties
+        function deepMerge(target, source) {
+            for (let key in source) {
+                if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+                    target[key] = target[key] || {};
+                    deepMerge(target[key], source[key]);
+                } else if (source[key] !== undefined) {
+                    target[key] = source[key];
+                }
+            }
+            return target;
+        }
+
+        // Apply Steam theme to a chart layout
+        function applySteamTheme(layout, darkBg) {
+            // Preserve existing title text, only update styling
+            if (layout.title) {
+                if (typeof layout.title === 'string') {
+                    layout.title = {
+                        text: layout.title,
+                        font: { color: '#66c0f4', size: 22 }
+                    };
+                } else if (layout.title.text) {
+                    layout.title.font = { color: '#66c0f4', size: 22 };
+                }
+            }
+
+            // Apply base styling
+            layout.paper_bgcolor = 'rgba(27, 40, 56, 0)';
+            layout.plot_bgcolor = darkBg ? 'rgba(22, 32, 45, 0.8)' : 'rgba(22, 32, 45, 0.4)';
+
+            layout.font = layout.font || {};
+            layout.font.family = 'Motiva Sans, Arial, sans-serif';
+            layout.font.color = '#c7d5e0';
+            layout.font.size = 12;
+
+            // Apply axis styling (preserve existing axis properties)
+            ['xaxis', 'yaxis', 'yaxis2'].forEach(function(axis) {
+                if (layout[axis]) {
+                    layout[axis].gridcolor = '#3d4e5c';
+                    layout[axis].linecolor = '#3d4e5c';
+                    layout[axis].zerolinecolor = '#3d4e5c';
+                    layout[axis].tickfont = layout[axis].tickfont || {};
+                    layout[axis].tickfont.color = '#8f98a0';
+
+                    // Preserve title styling
+                    if (layout[axis].title) {
+                        if (typeof layout[axis].title === 'string') {
+                            layout[axis].title = {
+                                text: layout[axis].title,
+                                font: { color: '#c7d5e0' }
+                            };
+                        } else if (layout[axis].title.text) {
+                            layout[axis].title.font = layout[axis].title.font || {};
+                            layout[axis].title.font.color = '#c7d5e0';
+                        }
+                    }
+                }
+            });
+
+            // Apply legend styling
+            if (layout.legend) {
+                layout.legend.bgcolor = 'rgba(27, 40, 56, 0.9)';
+                layout.legend.bordercolor = '#3d4e5c';
+                layout.legend.borderwidth = 1;
+                layout.legend.font = layout.legend.font || {};
+                layout.legend.font.color = '#c7d5e0';
+            }
+
+            return layout;
+        }
+
+        {% if charts %}
+            {% if charts.win_loss_timeline %}
+            var chart1 = {{ charts.win_loss_timeline | safe }};
+            applySteamTheme(chart1.layout, false);
+            Plotly.newPlot('chart1', chart1.data, chart1.layout, {displayModeBar: true, displaylogo: false});
+            {% endif %}
+
+            {% if charts.performance_curve %}
+            var chart3 = {{ charts.performance_curve | safe }};
+            applySteamTheme(chart3.layout, false);
+            Plotly.newPlot('chart3', chart3.data, chart3.layout, {displayModeBar: true, displaylogo: false});
+            {% endif %}
+
+            {% if charts.kd_stats %}
+            var chart4 = {{ charts.kd_stats | safe }};
+            applySteamTheme(chart4.layout, true);  // Darker background for map
+            Plotly.newPlot('chart4', chart4.data, chart4.layout, {displayModeBar: true, displaylogo: false});
+            {% endif %}
+
+            {% if charts.percentile_dist %}
+            var chart4_5 = {{ charts.percentile_dist | safe }};
+            applySteamTheme(chart4_5.layout, false);
+            Plotly.newPlot('chart4_5', chart4_5.data, chart4_5.layout, {displayModeBar: true, displaylogo: false});
+            {% endif %}
+
+            {% if charts.kda_trend %}
+            var chart6 = {{ charts.kda_trend | safe }};
+            applySteamTheme(chart6.layout, false);
+            Plotly.newPlot('chart6', chart6.data, chart6.layout, {displayModeBar: true, displaylogo: false});
+            {% endif %}
+        {% endif %}
+    </script>
+</body>
+</html>
