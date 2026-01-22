@@ -13,7 +13,7 @@
 
         body {
             font-family: 'Motiva Sans', 'Arial', sans-serif;
-            background-image: url("{{ url_for('static', filename='img/custom-cityscape-banner-filip.jpg') }}");
+            background-image: url("{{ url_for('static', filename='img/catalog_tooltip_bg_modifies_vitality.webp') }}");
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -297,9 +297,43 @@
     </div>
 
     <script>
-        document.getElementById('analyzeForm').addEventListener('submit', function(e) {
+        // Play UI sound when data is fetched
+        function playDataFetchedSound() {
+            return new Promise((resolve, reject) => {
+                const soundUrl = 'https://assets-bucket.deadlock-api.com/assets-api-res/sounds/ui/ui_hud_acquire_ap_02.mp3';
+                const audio = new Audio(soundUrl);
+                audio.volume = parseFloat(localStorage.getItem('audioVolume') || '0.5');
+
+                audio.addEventListener('ended', () => {
+                    console.log('UI sound finished playing!');
+                    resolve();
+                });
+
+                audio.addEventListener('error', (err) => {
+                    console.error('UI sound failed to load:', err);
+                    resolve(); // Continue even if sound fails
+                });
+
+                audio.play()
+                    .then(() => console.log('UI sound started playing successfully!'))
+                    .catch(err => {
+                        console.error('UI sound play failed:', err);
+                        resolve(); // Continue even if sound fails
+                    });
+            });
+        }
+
+        document.getElementById('analyzeForm').addEventListener('submit', async function(e) {
+            e.preventDefault(); // Prevent default form submission
+
             // Show loading overlay
             document.getElementById('loadingOverlay').classList.add('active');
+
+            // Play UI sound and wait for it to finish
+            await playDataFetchedSound();
+
+            // Submit the form manually after sound finishes
+            e.target.submit();
         });
     </script>
 </body>

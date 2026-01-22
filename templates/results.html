@@ -14,7 +14,7 @@
 
         body {
             font-family: 'Motiva Sans', 'Arial', sans-serif;
-            background-image: url("{{ url_for('static', filename='img/custom-cityscape-banner-filip.jpg') }}");
+            background-image: url("{{ url_for('static', filename='img/catalog_tooltip_bg_modifies_vitality.webp') }}");
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -69,7 +69,12 @@
             height: 120px;
             border-radius: 4px;
             border: 2px solid #66c0f4;
-            box-shadow: 0 0 15px rgba(102, 192, 244, 0.3);
+            filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.3));
+            transition: filter 0.3s ease;
+        }
+
+        .player-avatar:hover {
+            filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 40px rgba(255, 255, 255, 0.4));
         }
 
         .player-info {
@@ -96,6 +101,12 @@
             object-fit: contain;
             margin-top: -8px;
             cursor: pointer;
+            filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.3));
+            transition: filter 0.3s ease;
+        }
+
+        .rank-badge:hover {
+            filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 40px rgba(255, 255, 255, 0.4));
         }
 
         .player-steam-id {
@@ -113,16 +124,79 @@
         .dashboard-logo {
             position: absolute;
             left: 50%;
-            top: 45%;
+            top: 50%;
             transform: translate(-50%, -50%);
             height: 120px;
             width: auto;
-            opacity: 0.6;
-            transition: opacity 0.3s ease;
+            filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.3));
+            transition: filter 0.3s ease;
         }
 
         .dashboard-logo:hover {
-            opacity: 1;
+            filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 40px rgba(255, 255, 255, 0.4));
+        }
+
+        .volume-control-container {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(70px, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .volume-slider {
+            -webkit-appearance: slider-vertical;
+            writing-mode: bt-lr;
+            width: 6px;
+            height: 60px;
+            background: linear-gradient(to top, #16202d 0%, #2a475e 100%);
+            border: 1px solid #3d4e5c;
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #66c0f4;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(102, 192, 244, 0.5);
+            transition: all 0.2s ease;
+        }
+
+        .volume-slider::-webkit-slider-thumb:hover {
+            background: #47bfff;
+            box-shadow: 0 0 15px rgba(102, 192, 244, 0.8);
+        }
+
+        .volume-slider::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: #66c0f4;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 8px rgba(102, 192, 244, 0.5);
+            transition: all 0.2s ease;
+        }
+
+        .volume-slider::-moz-range-thumb:hover {
+            background: #47bfff;
+            box-shadow: 0 0 15px rgba(102, 192, 244, 0.8);
+        }
+
+        .volume-label {
+            color: #8f98a0;
+            font-size: 0.65em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .back-button-container {
@@ -411,9 +485,127 @@
             font-size: 1.1em;
             font-weight: 400;
         }
+
+        /* Make hero cards clickable */
+        .hero-card {
+            text-decoration: none;
+            color: inherit;
+            display: block;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        /* Highlight selected hero card */
+        .hero-card-selected {
+            border: 3px solid #66c0f4 !important;
+            box-shadow: 0 0 25px rgba(102, 192, 244, 0.8);
+            transform: translateY(-8px);
+        }
+
+        /* Dim unselected cards when filter active */
+        body:has(.hero-card-selected) .hero-card:not(.hero-card-selected) {
+            opacity: 0.5;
+        }
+
+        .hero-card:not(.hero-card-selected):hover {
+            opacity: 1;
+        }
+
+        /* Filter badge */
+        .filter-badge {
+            display: inline-block;
+            background: linear-gradient(to right, rgba(92, 200, 92, 0.2), rgba(92, 200, 92, 0.1));
+            border: 1px solid rgba(92, 200, 92, 0.5);
+            padding: 6px 14px;
+            border-radius: 3px;
+            font-size: 0.65em;
+            color: #5cc85c;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-left: 15px;
+            vertical-align: middle;
+        }
+
+        /* Clear filter button */
+        .clear-filter-btn {
+            display: inline-block;
+            padding: 6px 20px;
+            background: transparent;
+            border: 2px solid #d94040;
+            color: #d94040;
+            text-decoration: none;
+            border-radius: 3px;
+            font-size: 0.55em;
+            font-weight: 400;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        .clear-filter-btn:hover {
+            background: #d94040;
+            color: white;
+            box-shadow: 0 0 15px rgba(217, 64, 64, 0.4);
+        }
+
+        /* Flex layout for title with badges */
+        .top-heroes-title {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        /* Loading overlay */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(11, 17, 23, 0.95);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid #3d4e5c;
+            border-top: 4px solid #66c0f4;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #66c0f4;
+            font-size: 18px;
+            margin-top: 20px;
+            font-weight: 300;
+            letter-spacing: 1px;
+        }
     </style>
 </head>
 <body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Applying filter...</div>
+    </div>
     <div class="container">
         <div class="header">
             {% if steam_data and steam_data.avatar_full %}
@@ -431,6 +623,10 @@
             </div>
             {% endif %}
             <img src="/static/img/deadlock-logo-no-title-flat.png" alt="Deadlock" class="dashboard-logo">
+            <div class="volume-control-container">
+                <span class="volume-label" id="volumeLabel">50%</span>
+                <input type="range" min="0" max="100" value="50" class="volume-slider" id="volumeSlider" orient="vertical">
+            </div>
             <div class="back-button-container">
                 <a href="/" class="back-button">Analyze Another Player</a>
             </div>
@@ -472,10 +668,17 @@
         {% if top_heroes %}
         <div class="top-heroes-container">
             <div class="top-heroes-section">
-                <h2 class="top-heroes-title">Top 5 Heroes by Games Played</h2>
+                <h2 class="top-heroes-title">
+                    <span>Top 5 Heroes by Games Played</span>
+                    {% if filtered_hero_name %}
+                    <span class="filter-badge">Viewing: {{ filtered_hero_name }}</span>
+                    <a href="/analyze?player_id={{ player_id }}" class="clear-filter-btn">Clear Filter</a>
+                    {% endif %}
+                </h2>
                 <div class="top-heroes-grid">
                     {% for hero in top_heroes %}
-                    <div class="hero-card">
+                    <a href="/analyze?player_id={{ player_id }}&hero_id={{ hero.hero_id }}"
+                       class="hero-card {% if hero_id == hero.hero_id %}hero-card-selected{% endif %}">
                         {% if hero.icon_url %}
                         <img src="{{ hero.icon_url }}" alt="{{ hero.name }}" class="hero-icon">
                         {% endif %}
@@ -490,7 +693,7 @@
                                 <div class="hero-stat-value">{{ hero.win_rate }}</div>
                             </div>
                         </div>
-                    </div>
+                    </a>
                     {% endfor %}
                 </div>
             </div>
@@ -522,15 +725,15 @@
             </div>
             {% endif %}
 
-            {% if charts.mmr_history %}
-            <div class="chart-container">
-                <div id="chart7"></div>
-            </div>
-            {% endif %}
-
             {% if charts.kd_stats %}
             <div class="chart-container map-chart-container">
                 <div id="chart4"></div>
+            </div>
+            {% endif %}
+
+            {% if charts.mmr_history %}
+            <div class="chart-container">
+                <div id="chart7"></div>
             </div>
             {% endif %}
         {% else %}
@@ -650,6 +853,307 @@
             Plotly.newPlot('chart7', chart7.data, chart7.layout, {displayModeBar: true, displaylogo: false});
             {% endif %}
         {% endif %}
+
+        // Fetch sounds data and play voicelines when hero is selected
+        let soundsData = null;
+        let heroesData = null;
+
+        // Fetch sounds and heroes data on page load
+        async function loadAudioData() {
+            try {
+                console.log('Loading audio data...');
+                const [soundsResponse, heroesResponse] = await Promise.all([
+                    fetch('https://assets.deadlock-api.com/v1/sounds'),
+                    fetch('https://assets.deadlock-api.com/v2/heroes')
+                ]);
+                soundsData = await soundsResponse.json();
+                heroesData = await heroesResponse.json();
+                console.log('Audio data loaded successfully');
+                console.log('Heroes count:', heroesData.length);
+                console.log('Sounds has vo key:', 'vo' in soundsData);
+                if (soundsData.vo) {
+                    console.log('VO hero classes:', Object.keys(soundsData.vo).slice(0, 5));
+                }
+            } catch (error) {
+                console.error('Failed to load audio data:', error);
+            }
+        }
+
+        // Play random select voiceline for a hero (returns a promise that resolves when audio finishes)
+        function playHeroSelectSound(heroId) {
+            return new Promise((resolve, reject) => {
+            console.log('=== playHeroSelectSound called with heroId:', heroId);
+                console.log('soundsData exists:', !!soundsData);
+                console.log('heroesData exists:', !!heroesData);
+
+                if (!soundsData || !heroesData) {
+                    console.log('Audio data not loaded yet');
+                    resolve(); // Resolve immediately if no audio data
+                    return;
+                }
+
+                // Find hero by ID
+                console.log('Searching for hero with id:', heroId);
+                console.log('First 3 heroes:', heroesData.slice(0, 3).map(h => ({id: h.id, name: h.name})));
+                const hero = heroesData.find(h => h.id === heroId);
+
+                if (!hero) {
+                    console.log('Hero not found for id:', heroId);
+                    console.log('Available hero IDs:', heroesData.map(h => h.id).slice(0, 10));
+                    resolve(); // Resolve immediately if hero not found
+                    return;
+                }
+
+            let heroClassName = hero.class_name;
+            console.log('Found hero:', hero.name, 'class_name:', heroClassName);
+
+            // Remove "hero_" prefix if present (sounds API doesn't use the prefix)
+            if (heroClassName.startsWith('hero_')) {
+                heroClassName = heroClassName.substring(5); // Remove "hero_" prefix
+                console.log('Stripped to:', heroClassName);
+            }
+
+            // Get voicelines for this hero
+            const voSounds = soundsData.vo || {};
+            console.log('VO sounds available:', Object.keys(voSounds).length);
+            console.log('Looking for class_name:', heroClassName);
+            const heroSounds = voSounds[heroClassName];
+
+                if (!heroSounds) {
+                    console.log('No sounds found for hero class:', heroClassName);
+                    console.log('Available classes:', Object.keys(voSounds).slice(0, 10));
+                    resolve(); // Resolve immediately if no sounds
+                    return;
+                }
+
+                console.log('Hero sounds found:', Object.keys(heroSounds).length, 'total sounds');
+
+                // Filter for select sounds
+                const selectSounds = Object.entries(heroSounds).filter(([key, url]) =>
+                    key.toLowerCase().includes('_select_')
+                );
+
+                console.log('Select sounds found:', selectSounds.length);
+
+                if (selectSounds.length === 0) {
+                    console.log('No select sounds found for:', heroClassName);
+                    resolve(); // Resolve immediately if no select sounds
+                    return;
+                }
+
+                // Pick random select sound
+                const randomSound = selectSounds[Math.floor(Math.random() * selectSounds.length)];
+                const [soundKey, soundUrl] = randomSound;
+
+                console.log('Selected sound:', soundKey);
+                console.log('Sound URL:', soundUrl);
+
+                // Play the audio
+                const audio = new Audio(soundUrl);
+                audio.volume = globalVolume;
+
+                // Resolve when audio ends
+                audio.addEventListener('ended', () => {
+                    console.log('Audio finished playing!');
+                    resolve();
+                });
+
+                // Reject on error
+                audio.addEventListener('error', (err) => {
+                    console.error('Audio error:', err);
+                    resolve(); // Still resolve to allow navigation
+                });
+
+                console.log('Attempting to play audio...');
+                audio.play()
+                    .then(() => console.log('Audio started playing successfully!'))
+                    .catch(err => {
+                        console.error('Audio play failed:', err);
+                        resolve(); // Resolve even on play failure
+                    });
+            });
+        }
+
+        // Play UI sound when data is fetched (returns a promise that resolves when audio finishes)
+        function playDataFetchedSound() {
+            return new Promise((resolve, reject) => {
+                const soundUrl = 'https://assets-bucket.deadlock-api.com/assets-api-res/sounds/ui/ui_hud_acquire_ap_02.mp3';
+                const audio = new Audio(soundUrl);
+                audio.volume = globalVolume;
+
+                // Resolve when audio ends
+                audio.addEventListener('ended', () => {
+                    console.log('UI sound finished playing!');
+                    resolve();
+                });
+
+                // Reject on error
+                audio.addEventListener('error', (err) => {
+                    console.error('UI sound error:', err);
+                    resolve(); // Still resolve to allow navigation
+                });
+
+                console.log('Playing UI sound from:', soundUrl);
+                audio.play()
+                    .then(() => console.log('UI sound started playing successfully!'))
+                    .catch(err => {
+                        console.error('Failed to play UI sound:', err);
+                        resolve(); // Resolve even on play failure
+                    });
+            });
+        }
+
+        // Global volume control
+        let globalVolume = parseFloat(localStorage.getItem('audioVolume') || '0.5'); // Default 50%, read from localStorage
+
+        // Track currently playing logo music
+        let currentLogoAudio = null;
+
+        // Show loading overlay when hero cards are clicked
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM Content Loaded');
+            const heroCards = document.querySelectorAll('.hero-card');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const clearFilterBtn = document.querySelector('.clear-filter-btn');
+            const volumeSlider = document.getElementById('volumeSlider');
+            const volumeLabel = document.getElementById('volumeLabel');
+
+            console.log('Found hero cards:', heroCards.length);
+            console.log('Hero cards:', heroCards);
+
+            // Setup volume control
+            if (volumeSlider && volumeLabel) {
+                // Initialize slider with saved volume
+                volumeSlider.value = Math.round(globalVolume * 100);
+                volumeLabel.textContent = Math.round(globalVolume * 100) + '%';
+
+                volumeSlider.addEventListener('input', function() {
+                    globalVolume = this.value / 100;
+                    volumeLabel.textContent = this.value + '%';
+                    localStorage.setItem('audioVolume', globalVolume.toString());
+                    console.log('Volume changed to:', globalVolume);
+                });
+            }
+
+            // Load audio data
+            loadAudioData();
+
+            // Add click handler to hero cards with capture phase
+            console.log('Adding click handlers to', heroCards.length, 'cards');
+            heroCards.forEach(function(card, index) {
+                console.log('Adding listener to card', index);
+                card.addEventListener('click', async function(e) {
+                    console.log('CLICK EVENT FIRED!');
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // Get hero_id from the URL
+                    const href = card.getAttribute('href');
+                    console.log('Card clicked, href:', href);
+
+                    const urlParams = new URLSearchParams(href.split('?')[1]);
+                    const heroId = parseInt(urlParams.get('hero_id'));
+                    console.log('Extracted hero_id:', heroId);
+
+                    // Show loading overlay immediately
+                    loadingOverlay.classList.add('active');
+
+                    // Play hero select sound and wait for it to finish before navigating
+                    if (heroId) {
+                        console.log('Waiting for hero audio to finish...');
+                        await playHeroSelectSound(heroId);
+                        console.log('Hero audio finished!');
+
+                        // Play UI sound and wait for it to finish
+                        console.log('Playing UI sound...');
+                        await playDataFetchedSound();
+                    }
+
+                    console.log('Navigating now...');
+                    // Navigate after audio finishes (or immediately if no audio)
+                    window.location.href = href;
+                }, true); // Use capture phase
+            });
+
+            // Add click handler to clear filter button
+            if (clearFilterBtn) {
+                clearFilterBtn.addEventListener('click', async function(e) {
+                    e.preventDefault();
+                    console.log('Clear filter clicked');
+
+                    // Show loading overlay
+                    loadingOverlay.classList.add('active');
+
+                    // Play UI sound and wait for it to finish
+                    console.log('Playing UI sound for clear filter...');
+                    await playDataFetchedSound();
+
+                    console.log('Navigating to clear filter...');
+                    // Navigate after sound finishes
+                    window.location.href = clearFilterBtn.getAttribute('href');
+                });
+            }
+
+            // Add click handler to Deadlock logo
+            const deadlockLogo = document.querySelector('.dashboard-logo');
+            if (deadlockLogo) {
+                deadlockLogo.style.cursor = 'pointer';
+                deadlockLogo.addEventListener('click', function() {
+                    console.log('Deadlock logo clicked');
+
+                    // Check if music is already playing
+                    if (currentLogoAudio && !currentLogoAudio.paused) {
+                        console.log('Logo music already playing, ignoring click');
+                        return;
+                    }
+
+                    const soundUrl = 'https://assets-bucket.deadlock-api.com/assets-api-res/sounds/music/music_title_155bpm.mp3';
+                    currentLogoAudio = new Audio(soundUrl);
+                    currentLogoAudio.volume = globalVolume;
+
+                    // Clear reference when music ends
+                    currentLogoAudio.addEventListener('ended', function() {
+                        console.log('Logo music finished');
+                        currentLogoAudio = null;
+                    });
+
+                    // Clear reference on error
+                    currentLogoAudio.addEventListener('error', function() {
+                        console.log('Logo music error');
+                        currentLogoAudio = null;
+                    });
+
+                    currentLogoAudio.play()
+                        .then(() => console.log('Title music started playing!'))
+                        .catch(err => {
+                            console.error('Failed to play title music:', err);
+                            currentLogoAudio = null;
+                        });
+                });
+            }
+
+            // Add click handler to player avatar
+            const playerAvatar = document.querySelector('.player-avatar');
+            if (playerAvatar) {
+                playerAvatar.style.cursor = 'pointer';
+                playerAvatar.addEventListener('click', function() {
+                    console.log('Player avatar clicked');
+                    const soundUrl = 'https://assets-bucket.deadlock-api.com/assets-api-res/sounds/ui/ui_friends_list_send_invite_02.mp3';
+                    const audio = new Audio(soundUrl);
+                    audio.volume = globalVolume;
+                    audio.play()
+                        .then(() => console.log('Avatar sound started playing!'))
+                        .catch(err => console.error('Failed to play avatar sound:', err));
+                });
+            }
+
+            // Hide loading overlay if back button is used
+            window.addEventListener('pageshow', function(event) {
+                if (event.persisted) {
+                    loadingOverlay.classList.remove('active');
+                }
+            });
+        });
     </script>
 </body>
 </html>

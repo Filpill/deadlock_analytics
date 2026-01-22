@@ -11,19 +11,25 @@ from plotly.utils import PlotlyJSONEncoder
 app = Flask(__name__)
 
 
-def get_api_connection(player_id):
-    """Setup API connection configuration with player_id"""
+def get_api_connection(player_id, hero_id=None):
+    """Setup API connection configuration with player_id and optional hero_id"""
+    # Build hero_ids query parameter if provided (for analytics endpoints only)
+    hero_param = f"&hero_ids={hero_id}" if hero_id is not None else ""
+
     return {
         "data-api": {
             "http_client": http.client.HTTPSConnection("api.deadlock-api.com"),
             "endpoint": {
+                # match_history: Don't filter (needed for top heroes calculation)
                 "match_history": f"/v1/players/{player_id}/match-history?only_stored_history=false",
-                "player_stats": f"/v1/analytics/player-stats/metrics?account_id={player_id}",
-                "player_scoreboard": f"/v1/analytics/scoreboards/players?account_ids={player_id}&sort_by=matches",
-                "player_performance_curve": f"/v1/analytics/player-performance-curve?account_ids={player_id}&resolution=0",
-                "kill_death_stats": f"/v1/analytics/kill-death-stats?account_ids={player_id}",
-                "item_stats": f"/v1/analytics/item-stats?account_ids={player_id}&bucket=no_bucket",
+                # Analytics endpoints: Filter by hero_ids if provided
+                "player_stats": f"/v1/analytics/player-stats/metrics?account_ids={player_id}{hero_param}",
+                "player_scoreboard": f"/v1/analytics/scoreboards/players?account_ids={player_id}&sort_by=matches{hero_param}",
+                "player_performance_curve": f"/v1/analytics/player-performance-curve?account_ids={player_id}&resolution=0{hero_param}",
+                "kill_death_stats": f"/v1/analytics/kill-death-stats?account_ids={player_id}{hero_param}",
+                "item_stats": f"/v1/analytics/item-stats?account_ids={player_id}&bucket=no_bucket{hero_param}",
                 "steam_search": f"/v1/players/steam-search?search_query={player_id}",
+                # mmr_history: Don't filter (account-level stat, filtered client-side)
                 "mmr_history": f"/v1/players/{player_id}/mmr-history",
             }
         },
@@ -59,6 +65,13 @@ def get_request_data(connection, api_selection, endpoint_addr):
         return None
 
     data = json.loads(raw_data.decode("utf-8"))
+
+    # Log data size for debugging
+    if isinstance(data, list):
+        print(f"  → Received {len(data)} items")
+    elif isinstance(data, dict):
+        print(f"  → Received dict with {len(data)} keys")
+
     return data
 
 
@@ -69,7 +82,7 @@ def format_match_history(df, df_heroes):
 
     # Merge with hero names
     df = pd.merge(df, df_heroes[["id", "name"]], left_on="hero_id", right_on="id", how="left")
-    df = df.drop(columns=["hero_id", "id"]).rename(columns={"name": "hero_name"})
+    df = df.drop(columns=["id"]).rename(columns={"name": "hero_name"})  # Keep hero_id for filtering
 
     # Convert to timestamp
     df['start_ts'] = pd.to_datetime(df['start_time'], unit='s')
@@ -77,9 +90,24 @@ def format_match_history(df, df_heroes):
     return df
 
 
-def create_visualizations(player_id):
+def add_filter_subtitle(fig, hero_name):
+    """Add a subtitle annotation to a chart showing the active filter"""
+    if hero_name:
+        fig.add_annotation(
+            text=f"<span style='color: #8f98a0'>Filter Applied: <span style='color: #66c0f4'>{hero_name}</span></span>",
+            xref="paper", yref="paper",
+            x=0, y=1.0,
+            xanchor="left", yanchor="bottom",
+            showarrow=False,
+            font=dict(size=12),
+            align="left"
+        )
+    return fig
+
+
+def create_visualizations(player_id, hero_id=None):
     """Fetch data and create visualizations"""
-    connection = get_api_connection(player_id)
+    connection = get_api_connection(player_id, hero_id)
 
     # Fetch data from all endpoints
     try:
@@ -107,28 +135,88 @@ def create_visualizations(player_id):
             # Add placeholder hero_name column using hero_id
             df_match_history['hero_name'] = df_match_history['hero_id'].astype(str)
             df_match_history['start_ts'] = pd.to_datetime(df_match_history['start_time'], unit='s')
-        df_player_performance_curve = pd.json_normalize(player_performance_curve) if player_performance_curve else pd.DataFrame()
-        df_kill_death_stats = pd.json_normalize(kill_death_stats) if kill_death_stats else pd.DataFrame()
-        df_player_stats = pd.json_normalize(player_stats) if player_stats else pd.DataFrame()
 
-
-        charts = {}
-
-        # Chart 1: Win/Loss over time
+        # Add result column before filtering (needed for top heroes calculation)
         if not df_match_history.empty and 'player_team' in df_match_history.columns and 'match_result' in df_match_history.columns:
             df_match_history['result'] = df_match_history.apply(
                 lambda row: 'Win' if row['player_team'] == row['match_result'] else 'Loss', axis=1
             )
+
+        # Save unfiltered copy for top heroes calculation (after adding result column)
+        df_match_history_unfiltered = df_match_history.copy()
+
+        # Apply hero filter if specified
+        filtered_hero_name = None
+        if hero_id is not None and not df_match_history.empty:
+            # Capture hero name before filtering
+            if 'hero_name' in df_match_history.columns:
+                hero_match = df_match_history[df_match_history['hero_id'] == hero_id]
+                if not hero_match.empty:
+                    filtered_hero_name = hero_match.iloc[0]['hero_name']
+
+            # Filter match history to selected hero
+            df_match_history = df_match_history[df_match_history['hero_id'] == hero_id].copy()
+
+            print(f"Filtered to hero_id {hero_id} ({filtered_hero_name}): {len(df_match_history)} matches")
+
+        df_player_performance_curve = pd.json_normalize(player_performance_curve) if player_performance_curve else pd.DataFrame()
+        df_kill_death_stats = pd.json_normalize(kill_death_stats) if kill_death_stats else pd.DataFrame()
+        df_player_stats = pd.json_normalize(player_stats) if player_stats else pd.DataFrame()
+
+        print(f"Analytics data received:")
+        print(f"  - Performance curve: {len(df_player_performance_curve)} rows")
+        print(f"  - Kill/Death stats: {len(df_kill_death_stats)} rows")
+        print(f"  - Player stats: {len(df_player_stats)} rows")
+
+        if df_player_performance_curve.empty:
+            print("  WARNING: Performance curve data is EMPTY - chart will not display")
+            print(f"  Raw API response for performance curve: {player_performance_curve}")
+
+        # Debug player stats when filtering
+        if hero_id is not None and not df_player_stats.empty:
+            print(f"\nDEBUG: Player stats raw response sample:")
+            if isinstance(player_stats, dict):
+                print(f"  kills.avg: {player_stats.get('kills', {}).get('avg', 'N/A')}")
+                print(f"  deaths.avg: {player_stats.get('deaths', {}).get('avg', 'N/A')}")
+                print(f"  First 3 keys: {list(player_stats.keys())[:3]}")
+            print(f"  DataFrame kills.avg value: {df_player_stats['kills.avg'].iloc[0] if 'kills.avg' in df_player_stats.columns else 'Column not found'}")
+            print(f"  DataFrame kills.avg type: {type(df_player_stats['kills.avg'].iloc[0]) if 'kills.avg' in df_player_stats.columns else 'N/A'}")
+
+        charts = {}
+
+        # Chart 1: Win/Loss over time
+        if not df_match_history.empty and 'result' in df_match_history.columns:
             fig1 = px.histogram(df_match_history, x='start_ts', color='result',
                                title='Number of Matches Played',
                                labels={'start_ts': 'Date', 'count': 'Number of Matches'},
                                color_discrete_map={'Win': '#22c55e', 'Loss': '#ef4444'},
                                nbins=30)
             fig1.update_layout(bargap=0.1)
+            fig1 = add_filter_subtitle(fig1, filtered_hero_name)
+            charts['win_loss_timeline'] = json.dumps(fig1, cls=PlotlyJSONEncoder)
+        else:
+            print("Win/Loss timeline chart NOT created - showing insufficient data message")
+            # Create placeholder chart with message
+            fig1 = go.Figure()
+            fig1.add_annotation(
+                text="Insufficient match data to present visualisation",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                xanchor="center", yanchor="middle",
+                showarrow=False,
+                font=dict(size=16, color="#8f98a0")
+            )
+            fig1.update_layout(
+                title='Number of Matches Played',
+                xaxis=dict(visible=False),
+                yaxis=dict(visible=False),
+                height=400
+            )
+            fig1 = add_filter_subtitle(fig1, filtered_hero_name)
             charts['win_loss_timeline'] = json.dumps(fig1, cls=PlotlyJSONEncoder)
 
         # Chart 2: Performance Curve with dropdown selector
-        if not df_player_performance_curve.empty and 'game_time' in df_player_performance_curve.columns:
+        if not df_player_performance_curve.empty and 'game_time' in df_player_performance_curve.columns and len(df_player_performance_curve) > 0:
             print(f"Performance Curve DataFrame shape: {df_player_performance_curve.shape}")
             print(f"Performance Curve columns: {df_player_performance_curve.columns.tolist()}")
 
@@ -229,6 +317,27 @@ def create_visualizations(player_id):
             )
 
             print(f"Performance curve chart created with {len(fig3.data)} traces")
+            fig3 = add_filter_subtitle(fig3, filtered_hero_name)
+            charts['performance_curve'] = json.dumps(fig3, cls=PlotlyJSONEncoder)
+        else:
+            print("Performance curve chart NOT created - showing insufficient data message")
+            # Create placeholder chart with message
+            fig3 = go.Figure()
+            fig3.add_annotation(
+                text="Insufficient match data to present visualisation",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                xanchor="center", yanchor="middle",
+                showarrow=False,
+                font=dict(size=16, color="#8f98a0")
+            )
+            fig3.update_layout(
+                title='Average Performance Over Game Time',
+                xaxis=dict(visible=False),
+                yaxis=dict(visible=False),
+                height=400
+            )
+            fig3 = add_filter_subtitle(fig3, filtered_hero_name)
             charts['performance_curve'] = json.dumps(fig3, cls=PlotlyJSONEncoder)
 
         # Chart 4: Kill/Death Location Scatter Plot
@@ -332,6 +441,28 @@ def create_visualizations(player_id):
             )
 
             print(f"Chart created with {len(fig4.data)} traces")
+            fig4 = add_filter_subtitle(fig4, filtered_hero_name)
+            charts['kd_stats'] = json.dumps(fig4, cls=PlotlyJSONEncoder)
+        else:
+            print("Kill/Death location chart NOT created - showing insufficient data message")
+            # Create placeholder chart with message
+            fig4 = go.Figure()
+            fig4.add_annotation(
+                text="Insufficient match data to present visualisation",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                xanchor="center", yanchor="middle",
+                showarrow=False,
+                font=dict(size=16, color="#8f98a0")
+            )
+            fig4.update_layout(
+                title='Kill and Death Locations',
+                xaxis=dict(visible=False),
+                yaxis=dict(visible=False),
+                height=600,
+                width=600
+            )
+            fig4 = add_filter_subtitle(fig4, filtered_hero_name)
             charts['kd_stats'] = json.dumps(fig4, cls=PlotlyJSONEncoder)
 
         # Chart 4.5: Community Percentile Distribution
@@ -369,20 +500,84 @@ def create_visualizations(player_id):
                 ('deaths_to_neutrals', 'Deaths to Neutrals'),
             ]
 
+            print(f"Checking {len(metric_configs)} metrics for distribution chart")
             for metric_key, metric_name in metric_configs:
                 # Check if we have percentile data to construct community distribution
                 if f'{metric_key}.percentile50' in df_player_stats.columns and f'{metric_key}.avg' in df_player_stats.columns:
-                    # Only include metrics with reasonable percentile spread
-                    p25 = float(df_player_stats[f'{metric_key}.percentile25'].iloc[0]) if f'{metric_key}.percentile25' in df_player_stats.columns else None
-                    p75 = float(df_player_stats[f'{metric_key}.percentile75'].iloc[0]) if f'{metric_key}.percentile75' in df_player_stats.columns else None
+                    # Check if avg is valid
+                    avg_val = df_player_stats[f'{metric_key}.avg'].iloc[0]
+                    if avg_val is None or pd.isna(avg_val):
+                        print(f"Skipping {metric_key}: avg is None/NaN")
+                        continue
 
-                    if p25 is not None and p75 is not None and (p75 - p25) > 0.01:
+                    # Only include metrics with reasonable percentile spread
+                    p25_val = df_player_stats[f'{metric_key}.percentile25'].iloc[0] if f'{metric_key}.percentile25' in df_player_stats.columns else None
+                    p75_val = df_player_stats[f'{metric_key}.percentile75'].iloc[0] if f'{metric_key}.percentile75' in df_player_stats.columns else None
+
+                    # Convert to float only if not None
+                    p25 = float(p25_val) if p25_val is not None and pd.notna(p25_val) else None
+                    p75 = float(p75_val) if p75_val is not None and pd.notna(p75_val) else None
+
+                    # Include if we have valid percentile spread OR if it's a core metric (kills/deaths/assists)
+                    core_metrics = ['kills', 'deaths', 'assists']
+                    has_valid_spread = p25 is not None and p75 is not None and (p75 - p25) > 0.01
+                    is_core_metric = metric_key in core_metrics and p25 is not None and p75 is not None
+
+                    if has_valid_spread or is_core_metric:
                         metrics.append({
                             'key': metric_key,
                             'name': metric_name
                         })
+                        try:
+                            print(f"✓ Including metric {metric_key}: avg={float(avg_val):.2f}, p25={p25:.2f}, p75={p75:.2f}, spread={p75-p25:.2f}")
+                        except:
+                            print(f"✓ Including metric {metric_key}")
+                    else:
+                        spread = (p75 - p25) if (p25 is not None and p75 is not None) else None
+                        print(f"✗ Skipping {metric_key}: p25={p25}, p75={p75}, spread={spread}")
 
-            if metrics:
+            print(f"Total valid metrics for distribution chart: {len(metrics)}")
+
+            # Check if we have at least one metric with actual variance (non-degenerate distribution)
+            has_valid_distribution = False
+            for metric in metrics:
+                metric_key = metric['key']
+                p25_val = df_player_stats[f'{metric_key}.percentile25'].iloc[0] if f'{metric_key}.percentile25' in df_player_stats.columns else None
+                p75_val = df_player_stats[f'{metric_key}.percentile75'].iloc[0] if f'{metric_key}.percentile75' in df_player_stats.columns else None
+
+                if p25_val is not None and p75_val is not None:
+                    p25 = float(p25_val) if pd.notna(p25_val) else None
+                    p75 = float(p75_val) if pd.notna(p75_val) else None
+                    if p25 is not None and p75 is not None and abs(p75 - p25) > 0.01:
+                        has_valid_distribution = True
+                        break
+
+            if not has_valid_distribution:
+                print(f"WARNING: All metrics have degenerate distributions (no variance).")
+                metrics = []  # Clear metrics to skip chart generation
+
+            if len(metrics) == 0:
+                print(f"No valid metrics found for distribution chart - showing insufficient data message")
+                # Create placeholder chart with message
+                fig4_5 = go.Figure()
+                fig4_5.add_annotation(
+                    text="Insufficient match data to present visualisation",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5,
+                    xanchor="center", yanchor="middle",
+                    showarrow=False,
+                    font=dict(size=16, color="#8f98a0")
+                )
+                fig4_5.update_layout(
+                    title='Performance Compared To Community Distribution',
+                    xaxis=dict(visible=False),
+                    yaxis=dict(visible=False),
+                    height=600
+                )
+                fig4_5 = add_filter_subtitle(fig4_5, filtered_hero_name)
+                charts['percentile_dist'] = json.dumps(fig4_5, cls=PlotlyJSONEncoder)
+
+            elif metrics:
                 fig4_5 = go.Figure()
 
                 # Create traces for each metric
@@ -392,7 +587,8 @@ def create_visualizations(player_id):
                     # Get player's average
                     avg_col_name = f'{metric_key}.avg'
                     if avg_col_name in df_player_stats.columns:
-                        player_avg = float(df_player_stats[avg_col_name].iloc[0])
+                        avg_val = df_player_stats[avg_col_name].iloc[0]
+                        player_avg = float(avg_val) if avg_val is not None and pd.notna(avg_val) else 0
                     else:
                         player_avg = 0
 
@@ -401,7 +597,9 @@ def create_visualizations(player_id):
                     for p in [1, 5, 10, 25, 50, 75, 90, 95, 99]:
                         col_name = f'{metric_key}.percentile{p}'
                         if col_name in df_player_stats.columns:
-                            percentiles[p] = float(df_player_stats[col_name].iloc[0])
+                            perc_val = df_player_stats[col_name].iloc[0]
+                            if perc_val is not None and pd.notna(perc_val):
+                                percentiles[p] = float(perc_val)
 
                     # Use P50 (median) as community mean
                     community_mean = percentiles.get(50, player_avg)
@@ -560,6 +758,7 @@ def create_visualizations(player_id):
                 )
 
                 print(f"Distribution chart created with {len(fig4_5.data)} traces")
+                fig4_5 = add_filter_subtitle(fig4_5, filtered_hero_name)
                 charts['percentile_dist'] = json.dumps(fig4_5, cls=PlotlyJSONEncoder)
 
         # Chart 5: Match Statistics Over Time with Weekly Rolling Average
@@ -658,6 +857,27 @@ def create_visualizations(player_id):
             print(f"KDA trend chart created with {len(fig6.data)} traces")
             if len(fig6.data) > 0:
                 print(f"First trace has {len(fig6.data[0].x)} data points")
+            fig6 = add_filter_subtitle(fig6, filtered_hero_name)
+            charts['kda_trend'] = json.dumps(fig6, cls=PlotlyJSONEncoder)
+        else:
+            print("KDA trend chart NOT created - showing insufficient data message")
+            # Create placeholder chart with message
+            fig6 = go.Figure()
+            fig6.add_annotation(
+                text="Insufficient match data to present visualisation",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                xanchor="center", yanchor="middle",
+                showarrow=False,
+                font=dict(size=16, color="#8f98a0")
+            )
+            fig6.update_layout(
+                title='KDA Trend Over Time (7-Day Rolling Average)',
+                xaxis=dict(visible=False),
+                yaxis=dict(visible=False),
+                height=400
+            )
+            fig6 = add_filter_subtitle(fig6, filtered_hero_name)
             charts['kda_trend'] = json.dumps(fig6, cls=PlotlyJSONEncoder)
 
         # Chart 6: MMR History
@@ -762,13 +982,13 @@ def create_visualizations(player_id):
                 'avg_assists': f"{df_match_history['player_assists'].mean():.1f}",
             }
 
-        # Calculate top 5 heroes by games played
+        # Calculate top 5 heroes by games played (use unfiltered data)
         top_heroes = []
-        print(f"Top heroes check: df_match_history empty={df_match_history.empty}, hero_names={bool(hero_names)}, has hero_name={'hero_name' in df_match_history.columns if not df_match_history.empty else 'N/A'}")
+        print(f"Top heroes check: df_match_history_unfiltered empty={df_match_history_unfiltered.empty}, hero_names={bool(hero_names)}, has hero_name={'hero_name' in df_match_history_unfiltered.columns if not df_match_history_unfiltered.empty else 'N/A'}")
 
-        if not df_match_history.empty and hero_names and 'hero_name' in df_match_history.columns:
-            # Group by hero_name and calculate stats
-            hero_stats = df_match_history.groupby('hero_name').agg({
+        if not df_match_history_unfiltered.empty and hero_names and 'hero_name' in df_match_history_unfiltered.columns:
+            # Group by hero_name and calculate stats (using unfiltered data)
+            hero_stats = df_match_history_unfiltered.groupby('hero_name').agg({
                 'match_id': 'count',  # Total matches
                 'result': lambda x: (x == 'Win').sum()  # Total wins
             }).rename(columns={'match_id': 'matches', 'result': 'wins'})
@@ -787,9 +1007,12 @@ def create_visualizations(player_id):
                 # Get hero data including images
                 hero_info = df_heroes[df_heroes['name'] == hero_name]
                 icon_url = None
+                hero_id_value = None
 
                 if not hero_info.empty:
                     hero_row = hero_info.iloc[0]
+                    hero_id_value = int(hero_row['id'])  # Store hero_id
+                    print(f"Hero {hero_name} has ID: {hero_id_value}")
 
                     # Access flattened image columns (json_normalize creates 'images.key_name' columns)
                     # Try different image types in order of preference
@@ -798,16 +1021,22 @@ def create_visualizations(player_id):
                             icon_url = hero_row[img_key]
                             print(f"Found icon for {hero_name}: {img_key}")
                             break
+                else:
+                    print(f"WARNING: Hero {hero_name} not found in heroes endpoint!")
 
                 if not icon_url:
                     print(f"No icon found for {hero_name}")
 
-                top_heroes.append({
-                    'name': hero_name,
-                    'matches': int(hero_stats_row['matches']),
-                    'win_rate': f"{hero_stats_row['win_rate']:.1f}%",
-                    'icon_url': icon_url
-                })
+                if hero_id_value is not None:
+                    top_heroes.append({
+                        'name': hero_name,
+                        'hero_id': hero_id_value,  # Include hero_id
+                        'matches': int(hero_stats_row['matches']),
+                        'win_rate': f"{hero_stats_row['win_rate']:.1f}%",
+                        'icon_url': icon_url
+                    })
+                else:
+                    print(f"Skipping {hero_name} - no hero_id found")
 
             print(f"Top 5 heroes calculated: {[h['name'] for h in top_heroes]}")
 
@@ -876,13 +1105,13 @@ def create_visualizations(player_id):
                         'rank_division_tier': rank_division_tier,
                     }
 
-        return charts, summary, steam_data, top_heroes
+        return charts, summary, steam_data, top_heroes, filtered_hero_name
 
     except Exception as e:
         print(f"Error creating visualizations: {e}")
         import traceback
         traceback.print_exc()
-        return None, None, str(e), []
+        return None, None, str(e), [], None
 
 
 @app.route('/')
@@ -891,20 +1120,33 @@ def index():
     return render_template('index.html')
 
 
-@app.route('/analyze', methods=['POST'])
+@app.route('/analyze', methods=['GET', 'POST'])
 def analyze():
     """Process player_id and generate visualizations"""
-    player_id = request.form.get('player_id', '').strip()
+    # Handle both form submission and query params
+    if request.method == 'POST':
+        player_id = request.form.get('player_id', '').strip()
+    else:  # GET request
+        player_id = request.args.get('player_id', '').strip()
+
+    hero_id = request.args.get('hero_id', type=int)  # Optional filter (None if not provided)
 
     if not player_id:
         return render_template('index.html', error="Please enter a valid Player ID")
 
-    charts, summary, steam_data, top_heroes = create_visualizations(player_id)
+    charts, summary, steam_data, top_heroes, filtered_hero_name = create_visualizations(player_id, hero_id)
 
     if charts is None:
         return render_template('index.html', error=f"Error fetching data: {steam_data}")
 
-    return render_template('results.html', player_id=player_id, charts=charts, summary=summary, steam_data=steam_data, top_heroes=top_heroes)
+    return render_template('results.html',
+                          player_id=player_id,
+                          hero_id=hero_id,
+                          filtered_hero_name=filtered_hero_name,
+                          charts=charts,
+                          summary=summary,
+                          steam_data=steam_data,
+                          top_heroes=top_heroes)
 
 
 if __name__ == '__main__':
