@@ -4,7 +4,7 @@
 
 # Deadlock Analytics
 
-A comprehensive web-based analytics platform for Deadlock game statistics. View detailed player performance metrics, match history, hero statistics, and interactive visualizations with a Steam-themed interface.
+A comprehensive web-based analytics platform for Deadlock game statistics. View detailed player performance metrics, match history, hero statistics, and interactive visualisations.
 
 ## Features
 
@@ -27,7 +27,7 @@ A comprehensive web-based analytics platform for Deadlock game statistics. View 
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/Filpill/deadlock_analytics.git
 cd deadlock-analytics
 
 # Install uv (if not already installed)
@@ -82,19 +82,14 @@ deadlock-analytics/
 ## API Documentation
 
 This project uses the official Deadlock API:
-- **Data API**: https://api.deadlock-api.com
-- **Assets API**: https://assets.deadlock-api.com
-- **Documentation**: https://api.deadlock-api.com/docs
+- **Data API**: https://api.deadlock-api.com/docs
+- **Assets API**: https://assets.deadlock-api.com/docs
 
 ## Development
 
 For detailed development guidelines, API schema reference, and contribution instructions, see [CLAUDE.md](CLAUDE.md).
 
-## License
-
-[Add your license here]
-
 ## Acknowledgments
 
 - Powered by [Deadlock API](https://deadlock-api.com)
-- Built with Python and Flask
+- Built with Python, Plotly and Flask
