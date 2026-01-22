@@ -13,13 +13,29 @@
 
         body {
             font-family: 'Motiva Sans', 'Arial', sans-serif;
-            background: linear-gradient(to bottom, #1b2838 0%, #16202d 100%);
+            background-image: url("{{ url_for('static', filename='img/custom-cityscape-banner-filip.jpg') }}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
             padding: 20px;
             color: #c7d5e0;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(22, 32, 45, 0.85);
+            z-index: 0;
         }
 
         .container {
@@ -31,6 +47,8 @@
             width: 100%;
             text-align: center;
             border: 1px solid #3d4e5c;
+            position: relative;
+            z-index: 1;
         }
 
         h1 {
@@ -44,7 +62,7 @@
 
         .subtitle {
             color: #8f98a0;
-            margin-bottom: 40px;
+            margin-bottom: 0px;
             font-size: 1.1em;
             font-weight: 300;
         }
@@ -181,7 +199,8 @@
             color: #66c0f4;
             text-transform: uppercase;
             letter-spacing: 1px;
-            margin-bottom: 20px;
+            margin-top: 15px;
+            margin-bottom: 30px;
         }
 
         .loading-overlay {
@@ -235,9 +254,9 @@
 </head>
 <body>
     <div class="container">
-        <div class="steam-badge">Powered by Deadlock API</div>
         <h1>Deadlock Analytics</h1>
         <p class="subtitle">Advanced player statistics and performance analysis</p>
+        <div class="steam-badge">Powered by Deadlock API</div>
 
         {% if error %}
         <div class="error">

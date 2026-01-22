@@ -199,7 +199,7 @@ def create_visualizations(player_id):
                         {'visible': visible},  # Update trace visibility
                         {
                             'yaxis.title.text': metric['yaxis_title'],
-                            'title.text': f"Cumulative {metric['name']} Over Game Time"  # Dynamic title
+                            'title.text': f"Average {metric['name']} over Game Duration"  # Dynamic title
                         }
                     ]
                 })
@@ -208,7 +208,7 @@ def create_visualizations(player_id):
 
             # Update layout with dropdown
             fig3.update_layout(
-                title=f"Cumulative {metrics[0]['name']} Over Game Time" if metrics else 'Player Performance Over Game Time',
+                title=f"Average {metrics[0]['name']} over Game Duration" if metrics else 'Player Performance Over Game Time',
                 xaxis_title='Game Time (minutes)',
                 yaxis=dict(title=metrics[0]['yaxis_title'] if metrics else 'Value'),
                 hovermode='x unified',
