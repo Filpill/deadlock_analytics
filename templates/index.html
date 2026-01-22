@@ -302,7 +302,7 @@
             return new Promise((resolve, reject) => {
                 const soundUrl = 'https://assets-bucket.deadlock-api.com/assets-api-res/sounds/ui/ui_hud_acquire_ap_02.mp3';
                 const audio = new Audio(soundUrl);
-                audio.volume = parseFloat(localStorage.getItem('audioVolume') || '0.5');
+                audio.volume = 0.5;
 
                 audio.addEventListener('ended', () => {
                     console.log('UI sound finished playing!');

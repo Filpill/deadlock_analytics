@@ -155,7 +155,7 @@ The Flask application provides a comprehensive player analytics dashboard with S
 - **Layout**: Stacked vertically above Kill/Death Locations chart
 
 #### Top 5 Heroes Section
-- **Type**: Card grid displaying most-played heroes
+- **Type**: Clickable card grid displaying most-played heroes
 - **Description**:
   - Hero icon (from heroes endpoint via `images.icon_hero_card` or similar)
   - Hero name
@@ -164,6 +164,17 @@ The Flask application provides a comprehensive player analytics dashboard with S
 - **Layout**: 5-card horizontal grid with Steam-themed styling
 - **Data Source**: Grouped by `hero_name` from match history
 - **Purpose**: Show player's hero preferences and performance
+- **Interactive Features**:
+  - **Hero Filtering**: Click any hero card to filter all dashboard data by that hero
+  - **URL Updates**: Clicking a hero updates URL to `/analyze?player_id=X&hero_id=Y`
+  - **Visual Feedback**:
+    - Selected hero card highlighted with blue border and glow effect
+    - Unselected cards dimmed to 50% opacity
+    - "Viewing: {Hero Name}" badge appears in section header
+    - "Clear Filter" button appears to return to unfiltered view
+  - **Audio**: Plays random hero voiceline on click (from assets API `vo.{hero_class_name}` sounds containing "_select_")
+  - **Data Filtering**: When filtered, all charts and stats show only matches for that hero
+  - **Top Heroes Preserved**: All 5 hero cards remain visible when filtering (uses unfiltered data)
 
 #### Chart 5: Kill and Death Locations
 - **Type**: Scatter plot overlaid on minimap (600x600px)
@@ -194,6 +205,73 @@ The Flask application provides a comprehensive player analytics dashboard with S
   - Color coded: Kills (green), Deaths (red), Assists (blue)
 - **Purpose**: Track skill progression and performance improvement over time
 - **Title**: "KDA Trend Over Time (7-Day Rolling Average)"
+
+### Interactive Audio Features
+
+The application includes immersive audio feedback for various user interactions:
+
+#### Audio System
+- **Volume**: Fixed at 50% (0.5) for all sounds
+- **Assets Source**: Deadlock Assets API (`assets.deadlock-api.com`)
+- **Audio Data Loading**: Fetches full sound catalog from `/v1/images` endpoint on results page load
+
+#### Clickable Elements with Sounds
+
+1. **Hero Cards** (Top 5 Heroes section)
+   - **Sound**: Random hero voiceline from `vo.{hero_class_name}` containing "_select_"
+   - **Behavior**: Plays voiceline, waits for completion, then navigates to filtered view
+   - **Purpose**: Character selection feedback
+
+2. **KPI Tiles** (Summary Cards)
+   - **Sound**: Sequential dirt footstep sounds from `player.footsteps.shared.surface_sweeteners.soft_impact.dirt_{01-14}`
+   - **Behavior**: Plays sounds in sequence (dirt_01, dirt_02, ..., dirt_14, then loops back to dirt_01)
+   - **Counter**: Shared across all 5 tiles, increments with each click
+   - **Purpose**: Satisfying tactile feedback for stat exploration
+
+3. **Player Avatar** (Header left)
+   - **Sound**: `ui_friends_list_send_invite_02.mp3`
+   - **Behavior**: Plays immediately on click (non-blocking)
+   - **Purpose**: UI interaction feedback
+
+4. **Deadlock Logo** (Header center)
+   - **Sound**: `ui_friends_list_send_invite_02.mp3` (same as avatar)
+   - **Behavior**: Plays immediately on click (non-blocking)
+   - **Purpose**: UI interaction feedback
+
+5. **Initial Analysis Form** (index.html)
+   - **Sound**: `ui_hud_acquire_ap_02.mp3`
+   - **Behavior**: Plays and waits for completion before submitting form
+   - **Purpose**: Data fetch confirmation
+
+6. **Clear Filter Button** (results.html)
+   - **Sound**: `ui_hud_acquire_ap_02.mp3`
+   - **Behavior**: Plays and waits for completion before navigating
+   - **Purpose**: Action confirmation
+
+7. **Analyze Another Player Button** (results.html)
+   - **Sound**: `ui_hud_acquire_ap_02.mp3`
+   - **Behavior**: Plays asynchronously while navigating (non-blocking)
+   - **Purpose**: Smooth transition without delay
+
+#### Audio Implementation Details
+
+**Hero Voiceline System**:
+- Fetches hero class name from heroes API
+- Strips "hero_" prefix from class name for sounds API compatibility
+- Filters for voicelines containing "_select_" in the key
+- Picks random sound from available select voicelines
+- Uses Promise-based async/await to ensure voiceline plays fully before navigation
+
+**KPI Sequential Sounds**:
+- Global counter starts at 1
+- Counter increments after successful sound playback
+- Resets to 1 after reaching 14
+- All tiles share the same counter for consistent progression
+
+**Loading States**:
+- "Applying filter..." overlay shown during hero filtering
+- No overlay for "Analyze Another Player" (instant navigation with async sound)
+- Loading overlay hidden on page back navigation (pageshow event)
 
 ### Steam Theme Design
 
@@ -230,42 +308,60 @@ The entire application uses Steam's signature aesthetic:
 #### `/` (GET)
 - Home page with player ID input form
 - Clean, modern UI with gradient background
+- Plays UI sound on form submission before navigating
 
-#### `/analyze` (POST)
-- Accepts `player_id` form parameter
+#### `/analyze` (GET, POST)
+- **POST**: Accepts `player_id` form parameter from index page
+- **GET**: Accepts `player_id` and optional `hero_id` query parameters for filtered views
+- **Hero Filtering**: When `hero_id` is provided:
+  - Filters match history to only show matches for that hero
+  - Updates all charts and statistics to reflect filtered data
+  - Preserves top 5 heroes display using unfiltered data
+  - Passes `filtered_hero_name` to template for UI feedback
 - Fetches data from multiple API endpoints
 - Processes data with pandas
 - Generates Plotly visualizations
 - Renders analytics dashboard
+- **URL Examples**:
+  - `/analyze?player_id=199540209` (unfiltered view)
+  - `/analyze?player_id=199540209&hero_id=5` (filtered to hero_id 5)
 
 ### Data Processing Pipeline
 
-1. **Input Validation**: Validate player ID format (SteamID3)
+1. **Input Validation**: Validate player ID format (SteamID3) and optional hero_id parameter
 2. **API Calls**: Fetch data from 9 endpoints:
    - `/v2/heroes` - Hero names and metadata (includes images via flattened columns)
-   - `/v1/players/{id}/match-history` - Match details
+   - `/v1/players/{id}/match-history` - Match details (always unfiltered)
    - `/v1/players/steam-search?search_query={id}` - Steam profile data
-   - `/v1/analytics/player-stats/metrics` - Player statistics with community percentiles
-   - `/v1/analytics/player-performance-curve` - Performance metrics over game time
-   - `/v1/analytics/kill-death-stats` - Spatial kill/death coordinates
-   - `/v1/players/{id}/mmr-history` - MMR progression over time
+   - `/v1/analytics/player-stats/metrics?account_ids={id}&hero_ids={hero_id}` - Player statistics with community percentiles (filtered if hero_id provided)
+   - `/v1/analytics/player-performance-curve?account_ids={id}&hero_ids={hero_id}` - Performance metrics over game time (filtered if hero_id provided)
+   - `/v1/analytics/kill-death-stats?account_ids={id}&hero_ids={hero_id}` - Spatial kill/death coordinates (filtered if hero_id provided)
+   - `/v1/players/{id}/mmr-history` - MMR progression over time (never filtered)
    - `/v2/ranks` - Rank metadata including badge images
-   - `/v1/images` - Asset images (heroes, items, abilities)
+   - `/v1/images` - Asset images (heroes, items, abilities, sounds)
 3. **Data Transformation**:
    - Convert to pandas DataFrames with `json_normalize()`
    - Filter steam-search results by matching account_id
    - Extract Steam username and full-size avatar
-   - Join hero names with match data
+   - Join hero names with match data, **preserve hero_id column** for filtering
    - Calculate win/loss from match_result
+   - **Hero Filtering Logic** (if hero_id provided):
+     - Save unfiltered copy of match history (`df_match_history_unfiltered`) for top heroes calculation
+     - Filter match history to only matches where `hero_id == filter_value`
+     - Extract `filtered_hero_name` from filtered data
+     - Use filtered data for all charts/stats except top heroes
+     - Top heroes always uses unfiltered data to show all 5 cards
    - Apply 7-day rolling window for KDA trend
    - Sort by timestamp for chronological display
    - Generate normal distribution curves using scipy.stats
    - Filter metrics with std_dev < 0.01 to avoid flat curves
+   - Handle degenerate distributions with "Insufficient match data" placeholders
 4. **Visualization**: Generate Plotly charts with PlotlyJSONEncoder
    - Apply Steam theme using JavaScript `applySteamTheme()` function
    - Dynamic chart titles based on dropdown selections
    - Preserve chart properties while applying colors
-5. **Rendering**: Pass charts, summary stats, and Steam profile to HTML template
+   - Show filter subtitle when hero filtering is active
+5. **Rendering**: Pass charts, summary stats, Steam profile, top heroes, hero_id, and filtered_hero_name to HTML template
 
 ## Game Terminology
 
@@ -306,15 +402,20 @@ See `/docs/api_schema_reference.md` for comprehensive documentation including:
 
 | Endpoint | Purpose | Returns |
 |----------|---------|---------|
-| `/v2/heroes` | Hero metadata | List of 53 heroes with names, images (flattened), stats |
-| `/v1/players/{id}/match-history` | Match details | List of matches (21 columns per match) |
+| `/v2/heroes` | Hero metadata | List of 53 heroes with names, images (flattened), stats, class_name |
+| `/v1/players/{id}/match-history` | Match details | List of matches (21 columns per match) with hero_id |
 | `/v1/players/steam-search` | Steam profile lookup | List of matching profiles with username, avatars |
-| `/v1/analytics/player-stats/metrics` | Player statistics | Averages, std dev, and community percentiles (P1-P99) |
-| `/v1/analytics/player-performance-curve` | Performance over game time | 12 time intervals with avg stats |
-| `/v1/analytics/kill-death-stats` | Kill/death locations | List of map coordinates with counts |
-| `/v1/players/{id}/mmr-history` | MMR progression | List of games with MMR score, division, tier |
+| `/v1/analytics/player-stats/metrics?account_ids={id}&hero_ids={hero_id}` | Player statistics | Averages, std dev, and community percentiles (P1-P99). Supports filtering by hero_ids |
+| `/v1/analytics/player-performance-curve?account_ids={id}&hero_ids={hero_id}` | Performance over game time | 12 time intervals with avg stats. Supports filtering by hero_ids |
+| `/v1/analytics/kill-death-stats?account_ids={id}&hero_ids={hero_id}` | Kill/death locations | List of map coordinates with counts. Supports filtering by hero_ids |
+| `/v1/players/{id}/mmr-history` | MMR progression | List of games with MMR score, division, tier (never filtered) |
 | `/v2/ranks` | Rank metadata | List of ranks with badge images and tier info |
-| `/v1/images` | Asset images | Dictionary of image URLs for heroes, items, abilities |
+| `/v1/images` | Asset images | Dictionary of image URLs and sound URLs (heroes, items, abilities, vo, physics, player, ui) |
+
+**Important**: Analytics endpoints use plural parameter names:
+- `account_ids` (not `account_id`)
+- `hero_ids` (not `hero_id`)
+- Multiple IDs can be comma-separated
 
 ### Rate Limits
 - No authentication required for public endpoints
@@ -518,6 +619,137 @@ fig.add_trace(go.Scatter(
 ))
 ```
 
+**Hero Filtering Implementation**
+```python
+# app.py - Route accepts both GET and POST
+@app.route('/analyze', methods=['GET', 'POST'])
+def analyze():
+    if request.method == 'POST':
+        player_id = request.form.get('player_id', '').strip()
+    else:  # GET request
+        player_id = request.args.get('player_id', '').strip()
+
+    hero_id = request.args.get('hero_id', type=int)  # Optional filter
+
+    charts, summary, steam_data, top_heroes, filtered_hero_name = create_visualizations(player_id, hero_id)
+
+    return render_template('results.html',
+                          player_id=player_id,
+                          hero_id=hero_id,
+                          filtered_hero_name=filtered_hero_name,
+                          charts=charts,
+                          summary=summary,
+                          steam_data=steam_data,
+                          top_heroes=top_heroes)
+
+# app.py - Preserve hero_id in data pipeline
+df = df.drop(columns=["id"]).rename(columns={"name": "hero_name"})  # Keep hero_id
+
+# app.py - Filter match history after enrichment
+def create_visualizations(player_id, hero_id=None):
+    # ... fetch and enrich match history ...
+
+    # Save unfiltered copy for top heroes calculation
+    df_match_history_unfiltered = df_match_history.copy()
+
+    # Apply hero filter if specified
+    filtered_hero_name = None
+    if hero_id is not None and not df_match_history.empty:
+        if 'hero_name' in df_match_history.columns:
+            hero_match = df_match_history[df_match_history['hero_id'] == hero_id]
+            if not hero_match.empty:
+                filtered_hero_name = hero_match.iloc[0]['hero_name']
+
+        # Filter match history to selected hero
+        df_match_history = df_match_history[df_match_history['hero_id'] == hero_id].copy()
+
+    # Use df_match_history_unfiltered for top heroes calculation
+    # Use df_match_history (filtered) for all charts and stats
+
+    return charts, summary, steam_data, top_heroes, filtered_hero_name
+
+# app.py - API connection with hero_ids parameter
+def get_api_connection(player_id, hero_id=None):
+    hero_param = f"&hero_ids={hero_id}" if hero_id is not None else ""
+    return {
+        "data-api": {
+            # match_history: Don't filter (needed for top heroes)
+            "match_history": f"/v1/players/{player_id}/match-history?only_stored_history=false",
+            # Analytics endpoints: Filter by hero_ids if provided
+            "player_stats": f"/v1/analytics/player-stats/metrics?account_ids={player_id}{hero_param}",
+            "player_performance_curve": f"/v1/analytics/player-performance-curve?account_ids={player_id}&resolution=0{hero_param}",
+            "kill_death_stats": f"/v1/analytics/kill-death-stats?account_ids={player_id}{hero_param}",
+            # mmr_history: Never filtered
+            "mmr_history": f"/v1/players/{player_id}/mmr-history",
+        }
+    }
+```
+
+**Hero Card Audio Integration**
+```javascript
+// results.html - Hero voiceline playback
+async function playHeroSelectSound(heroId) {
+    return new Promise((resolve, reject) => {
+        const hero = heroesData.find(h => h.id === heroId);
+        let heroClassName = hero.class_name;
+
+        // Remove "hero_" prefix (sounds API doesn't use it)
+        if (heroClassName.startsWith('hero_')) {
+            heroClassName = heroClassName.substring(5);
+        }
+
+        const heroSounds = soundsData.vo[heroClassName];
+        const selectSounds = Object.entries(heroSounds).filter(([key, url]) =>
+            key.toLowerCase().includes('_select_')
+        );
+
+        const randomSound = selectSounds[Math.floor(Math.random() * selectSounds.length)];
+        const [soundKey, soundUrl] = randomSound;
+
+        const audio = new Audio(soundUrl);
+        audio.volume = 0.5;
+
+        audio.addEventListener('ended', () => resolve());
+        audio.play().catch(err => resolve());
+    });
+}
+
+// Hero card click handler
+card.addEventListener('click', async function(e) {
+    e.preventDefault();
+    loadingOverlay.classList.add('active');
+
+    if (heroId) {
+        await playHeroSelectSound(heroId);
+    }
+
+    window.location.href = href;
+}, true);
+```
+
+**KPI Tile Sequential Sounds**
+```javascript
+// results.html - Sequential dirt footstep sounds
+let kpiSoundCounter = 1;
+
+kpiTiles.forEach(function(tile) {
+    tile.addEventListener('click', function() {
+        const softImpactSounds = soundsData.player.footsteps.shared.surface_sweeteners.soft_impact;
+        const soundKey = `dirt_${String(kpiSoundCounter).padStart(2, '0')}`;
+        const soundUrl = softImpactSounds[soundKey];
+
+        const audio = new Audio(soundUrl);
+        audio.volume = 0.5;
+        audio.play().then(() => {
+            kpiSoundCounter++;
+            if (kpiSoundCounter > 14) {
+                kpiSoundCounter = 1;
+            }
+        });
+    });
+});
+```
+
 ### Data Analysis Workflow
 1. Fetch data using API endpoints
 2. Convert to pandas DataFrames with `json_normalize()`
@@ -629,6 +861,25 @@ uv sync
 - Check for None values from API calls
 - Verify column names match API schema
 - Test with known working player ID (199540209)
+
+**Audio Issues**
+- Check browser console (F12) for audio playback errors
+- Verify audio data loaded: Check console for "Audio data loaded" message
+- Test hero class names: Hero class_name from API should not include "hero_" prefix for sounds API
+- Verify sound paths:
+  - Hero voicelines: `vo.{hero_class_name}.{sound_key}` (must contain "_select_")
+  - KPI sounds: `player.footsteps.shared.surface_sweeteners.soft_impact.dirt_{01-14}`
+  - UI sounds: `ui_hud_acquire_ap_02.mp3`, `ui_friends_list_send_invite_02.mp3`
+- Browser autoplay policies may block some sounds (user interaction required)
+- Audio volume fixed at 0.5 (50%) in code
+
+**Hero Filtering Issues**
+- Verify hero_id is valid integer from heroes API
+- Check that match history includes hero_id column
+- Filtered data should preserve hero_id for filtering logic
+- Top 5 heroes should always show (uses unfiltered data copy)
+- Clear filter button navigates to `/analyze?player_id={id}` (no hero_id)
+- If charts show "Insufficient match data", hero may have too few matches
 
 ### Dependency Issues
 
@@ -796,6 +1047,23 @@ The project includes the **ForevsDemo** font family (14 variants) located in `st
 - [Deadlock Wiki](https://deadlock.fandom.com/) - Game mechanics and lore
 - Community forums and Discord for player insights
 
+## Recent Features (v0.2.0)
+
+**Hero Filtering System** (2026-01-22)
+- ✅ Clickable hero cards to filter all dashboard data by hero_id
+- ✅ URL parameter support for bookmarkable filtered views
+- ✅ Visual feedback with highlighted/dimmed cards and filter badges
+- ✅ Preserves top 5 heroes display when filtering
+- ✅ Backend filtering with GET request support
+
+**Interactive Audio System** (2026-01-22)
+- ✅ Hero voicelines play on hero card selection
+- ✅ Sequential dirt footstep sounds on KPI tile clicks (cycles 1-14)
+- ✅ UI confirmation sounds for form submissions and navigation
+- ✅ Clickable avatar and logo with sound feedback
+- ✅ Fixed 50% volume for all audio
+- ✅ Promise-based async audio handling
+
 ## Future Enhancements
 
 Potential features to add:
@@ -803,16 +1071,17 @@ Potential features to add:
 - [ ] Caching layer for API responses
 - [ ] More chart types (radar charts, heatmaps)
 - [ ] Compare multiple players
-- [ ] Hero-specific performance analysis
 - [ ] Item build analysis
 - [ ] Match replay links
 - [ ] Export data to CSV/JSON
 - [ ] User authentication and saved dashboards
 - [ ] Real-time data refresh
 - [ ] Mobile-responsive design improvements
+- [ ] Adjustable volume control (currently fixed at 50%)
+- [ ] More audio feedback for additional interactions
 
 ---
 
-**Last Updated**: 2026-01-21
-**Project Version**: 0.1.0
+**Last Updated**: 2026-01-22
+**Project Version**: 0.2.0
 **Python Version**: 3.12+

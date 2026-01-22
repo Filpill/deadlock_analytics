@@ -136,69 +136,6 @@
             filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 40px rgba(255, 255, 255, 0.4));
         }
 
-        .volume-control-container {
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(70px, -50%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .volume-slider {
-            -webkit-appearance: slider-vertical;
-            writing-mode: bt-lr;
-            width: 6px;
-            height: 60px;
-            background: linear-gradient(to top, #16202d 0%, #2a475e 100%);
-            border: 1px solid #3d4e5c;
-            border-radius: 3px;
-            outline: none;
-            cursor: pointer;
-        }
-
-        .volume-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 14px;
-            height: 14px;
-            background: #66c0f4;
-            border-radius: 50%;
-            cursor: pointer;
-            box-shadow: 0 0 8px rgba(102, 192, 244, 0.5);
-            transition: all 0.2s ease;
-        }
-
-        .volume-slider::-webkit-slider-thumb:hover {
-            background: #47bfff;
-            box-shadow: 0 0 15px rgba(102, 192, 244, 0.8);
-        }
-
-        .volume-slider::-moz-range-thumb {
-            width: 14px;
-            height: 14px;
-            background: #66c0f4;
-            border-radius: 50%;
-            cursor: pointer;
-            border: none;
-            box-shadow: 0 0 8px rgba(102, 192, 244, 0.5);
-            transition: all 0.2s ease;
-        }
-
-        .volume-slider::-moz-range-thumb:hover {
-            background: #47bfff;
-            box-shadow: 0 0 15px rgba(102, 192, 244, 0.8);
-        }
-
-        .volume-label {
-            color: #8f98a0;
-            font-size: 0.65em;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
         .back-button-container {
             position: absolute;
             right: 40px;
@@ -261,6 +198,7 @@
             padding: 20px;
             text-align: center;
             transition: all 0.2s ease;
+            cursor: pointer;
         }
 
         .summary-card:hover {
@@ -623,10 +561,6 @@
             </div>
             {% endif %}
             <img src="/static/img/deadlock-logo-no-title-flat.png" alt="Deadlock" class="dashboard-logo">
-            <div class="volume-control-container">
-                <span class="volume-label" id="volumeLabel">50%</span>
-                <input type="range" min="0" max="100" value="50" class="volume-slider" id="volumeSlider" orient="vertical">
-            </div>
             <div class="back-button-container">
                 <a href="/" class="back-button">Analyze Another Player</a>
             </div>
@@ -1004,10 +938,10 @@
         }
 
         // Global volume control
-        let globalVolume = parseFloat(localStorage.getItem('audioVolume') || '0.5'); // Default 50%, read from localStorage
+        const globalVolume = 0.5; // Fixed 50% volume
 
-        // Track currently playing logo music
-        let currentLogoAudio = null;
+        // KPI tile sound counter
+        let kpiSoundCounter = 1;
 
         // Show loading overlay when hero cards are clicked
         document.addEventListener('DOMContentLoaded', function() {
@@ -1015,25 +949,9 @@
             const heroCards = document.querySelectorAll('.hero-card');
             const loadingOverlay = document.getElementById('loadingOverlay');
             const clearFilterBtn = document.querySelector('.clear-filter-btn');
-            const volumeSlider = document.getElementById('volumeSlider');
-            const volumeLabel = document.getElementById('volumeLabel');
 
             console.log('Found hero cards:', heroCards.length);
             console.log('Hero cards:', heroCards);
-
-            // Setup volume control
-            if (volumeSlider && volumeLabel) {
-                // Initialize slider with saved volume
-                volumeSlider.value = Math.round(globalVolume * 100);
-                volumeLabel.textContent = Math.round(globalVolume * 100) + '%';
-
-                volumeSlider.addEventListener('input', function() {
-                    globalVolume = this.value / 100;
-                    volumeLabel.textContent = this.value + '%';
-                    localStorage.setItem('audioVolume', globalVolume.toString());
-                    console.log('Volume changed to:', globalVolume);
-                });
-            }
 
             // Load audio data
             loadAudioData();
@@ -1063,10 +981,6 @@
                         console.log('Waiting for hero audio to finish...');
                         await playHeroSelectSound(heroId);
                         console.log('Hero audio finished!');
-
-                        // Play UI sound and wait for it to finish
-                        console.log('Playing UI sound...');
-                        await playDataFetchedSound();
                     }
 
                     console.log('Navigating now...');
@@ -1094,41 +1008,35 @@
                 });
             }
 
-            // Add click handler to Deadlock logo
+            // Add click handler to "Analyze Another Player" button
+            const backButton = document.querySelector('.back-button');
+            if (backButton) {
+                backButton.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log('Analyze Another Player clicked');
+
+                    // Play UI sound (non-blocking)
+                    console.log('Playing UI sound for back button...');
+                    playDataFetchedSound();
+
+                    console.log('Navigating to index...');
+                    // Navigate immediately while sound plays
+                    window.location.href = backButton.getAttribute('href');
+                });
+            }
+
+            // Add click handler to Deadlock logo (same sound as avatar)
             const deadlockLogo = document.querySelector('.dashboard-logo');
             if (deadlockLogo) {
                 deadlockLogo.style.cursor = 'pointer';
                 deadlockLogo.addEventListener('click', function() {
                     console.log('Deadlock logo clicked');
-
-                    // Check if music is already playing
-                    if (currentLogoAudio && !currentLogoAudio.paused) {
-                        console.log('Logo music already playing, ignoring click');
-                        return;
-                    }
-
-                    const soundUrl = 'https://assets-bucket.deadlock-api.com/assets-api-res/sounds/music/music_title_155bpm.mp3';
-                    currentLogoAudio = new Audio(soundUrl);
-                    currentLogoAudio.volume = globalVolume;
-
-                    // Clear reference when music ends
-                    currentLogoAudio.addEventListener('ended', function() {
-                        console.log('Logo music finished');
-                        currentLogoAudio = null;
-                    });
-
-                    // Clear reference on error
-                    currentLogoAudio.addEventListener('error', function() {
-                        console.log('Logo music error');
-                        currentLogoAudio = null;
-                    });
-
-                    currentLogoAudio.play()
-                        .then(() => console.log('Title music started playing!'))
-                        .catch(err => {
-                            console.error('Failed to play title music:', err);
-                            currentLogoAudio = null;
-                        });
+                    const soundUrl = 'https://assets-bucket.deadlock-api.com/assets-api-res/sounds/ui/ui_friends_list_send_invite_02.mp3';
+                    const audio = new Audio(soundUrl);
+                    audio.volume = globalVolume;
+                    audio.play()
+                        .then(() => console.log('Logo sound started playing!'))
+                        .catch(err => console.error('Failed to play logo sound:', err));
                 });
             }
 
@@ -1146,6 +1054,56 @@
                         .catch(err => console.error('Failed to play avatar sound:', err));
                 });
             }
+
+            // Add click handlers to KPI tiles
+            const kpiTiles = document.querySelectorAll('.summary-card');
+            kpiTiles.forEach(function(tile) {
+                tile.style.cursor = 'pointer';
+                tile.addEventListener('click', function() {
+                    console.log('KPI tile clicked, counter:', kpiSoundCounter);
+
+                    // Wait for audio data to load if not ready
+                    if (!soundsData || !soundsData.player || !soundsData.player.footsteps) {
+                        console.log('Audio data not ready yet');
+                        return;
+                    }
+
+                    // Navigate to player.footsteps.shared.surface_sweeteners.soft_impact
+                    const footsteps = soundsData.player.footsteps;
+                    if (!footsteps.shared || !footsteps.shared.surface_sweeteners || !footsteps.shared.surface_sweeteners.soft_impact) {
+                        console.log('Footstep sounds not found in expected path');
+                        return;
+                    }
+
+                    const softImpactSounds = footsteps.shared.surface_sweeteners.soft_impact;
+
+                    // Find the dirt sound with current counter number (two-digit format)
+                    const soundKey = `dirt_${String(kpiSoundCounter).padStart(2, '0')}`;
+                    const soundUrl = softImpactSounds[soundKey];
+
+                    if (!soundUrl) {
+                        console.log('Sound not found:', soundKey);
+                        // Try to find any dirt sounds to debug
+                        const dirtSounds = Object.keys(softImpactSounds).filter(k => k.startsWith('dirt_'));
+                        console.log('Available dirt sounds:', dirtSounds);
+                        return;
+                    }
+
+                    console.log('Playing sound:', soundKey);
+                    const audio = new Audio(soundUrl);
+                    audio.volume = globalVolume;
+                    audio.play()
+                        .then(() => {
+                            console.log('KPI sound started playing!');
+                            // Increment counter
+                            kpiSoundCounter++;
+                            if (kpiSoundCounter > 14) {
+                                kpiSoundCounter = 1; // Reset to 1
+                            }
+                        })
+                        .catch(err => console.error('Failed to play KPI sound:', err));
+                });
+            });
 
             // Hide loading overlay if back button is used
             window.addEventListener('pageshow', function(event) {
