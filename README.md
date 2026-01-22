@@ -127,34 +127,6 @@ The application is production-ready and deployed to Google Cloud Run using a con
 - **Package Manager**: uv for fast dependency installation
 - **Infrastructure as Code**: Terraform for repeatable deployments
 
-### Deployment Options
-
-**Option 1: Terraform (Recommended)**
-```bash
-# Build and push Docker image
-docker build -t flask_deadlock_analytics_app:latest .
-docker tag flask_deadlock_analytics_app:latest \
-  europe-west2-docker.pkg.dev/deadlock-485121/deadlock-repo/flask_deadlock_analytics_app:latest
-docker push europe-west2-docker.pkg.dev/deadlock-485121/deadlock-repo/flask_deadlock_analytics_app:latest
-
-# Deploy with Terraform
-cd terraform
-terraform init
-terraform apply
-```
-
-**Option 2: Manual Deployment**
-```bash
-# From project root
-docker build -t deadlock-analytics:latest .
-
-# Deploy directly with gcloud
-gcloud run deploy deadlock-analytics \
-  --source . \
-  --region europe-west2 \
-  --allow-unauthenticated
-```
-
 See `terraform/README.md` for complete Terraform configuration details.
 
 ### Service Configuration
