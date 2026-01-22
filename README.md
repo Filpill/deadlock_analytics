@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./static/img/custom-cityscape-banner-filip.png" alt="Deadlock Analytics Banner" width="100%">
+  <img src="./static/img/custom-cityscape-banner-filip.jpg" alt="Deadlock Analytics Banner" width="100%">
 </div>
 
 # Deadlock Analytics
