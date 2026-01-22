@@ -38,12 +38,16 @@ This is a Python-based analytics project for analyzing Deadlock game data using 
 deadlock-analytics/
 ├── app.py                      # Main Flask application
 ├── templates/                  # HTML templates for Flask
-│   ├── index.html             # Landing page with player ID input
-│   └── results.html           # Analytics dashboard
+│   ├── index.html             # Landing page with player ID input and loading spinner
+│   └── results.html           # Analytics dashboard with 7 charts
 ├── static/                     # Static assets
+│   ├── fonts/                 # Custom fonts
+│   │   └── ForevsDemo-*.otf  # ForevsDemo font family (14 variants)
 │   └── img/
 │       ├── minimap.png        # Deadlock minimap (512x512)
-│       └── deadlock-logo.png  # Deadlock logo for branding
+│       ├── graphic_cityscape.png  # Banner image for README
+│       ├── deadlock-logo-no-title-flat.png  # Deadlock logo (flat)
+│       └── Deadlock-icon-no-title.webp      # Deadlock icon
 ├── scripts/                    # Analysis scripts
 │   ├── deadlock_notebook.py  # Original marimo notebook
 │   └── analyze_schema.py     # API schema analysis tool
@@ -51,6 +55,7 @@ deadlock-analytics/
 │   └── api_schema_reference.md # API endpoint schemas
 ├── __marimo__/                # Marimo notebook cache
 ├── .venv/                     # Virtual environment
+├── README.md                  # Project readme with cityscape banner
 ├── pyproject.toml             # Dependencies
 └── uv.lock                    # Locked dependency versions
 ```
@@ -68,26 +73,31 @@ python app.py
 The Flask app provides an interactive analytics dashboard with:
 
 **Header Section:**
-- Player profile with Steam avatar and username (left)
-- Deadlock logo (center)
+- Player profile with Steam avatar (120x120px), username, and rank badge (left-justified text)
+- Rank badge (48x48px) with hover tooltip showing rank name and tier
+- Deadlock logo (center, 125px width, opacity transition effect)
 - "Analyze Another Player" button (right)
 - 5 KPI tiles: Total Matches, Wins, Losses, Win Rate, Avg K/D/A
 
+**Top 5 Heroes:**
+- Card grid showing most-played heroes with icons, match count, and win rate
+- Hero icons from `/v2/heroes` endpoint (flattened image columns)
+
 **Charts:**
 1. **Number of Matches Played** - Histogram showing win/loss distribution over time
-2. **Performance Curve** - Average metrics over game time with dropdown selector:
-   - Net Worth (Souls)
-   - Kills
-   - Deaths
-   - Assists
-   - Dynamically updates title: "Average {Metric} Over Game Time"
-3. **Kill and Death Locations** - Scatter plot overlaid on minimap (600x600px)
+2. **Performance Curve** - Cumulative metrics over game time with dropdown selector:
+   - Net Worth (Souls), Kills, Deaths, Assists
+   - Dynamically updates title: "Cumulative {Metric} Over Game Time"
+3. **Community Distribution Comparison** - Normal distribution with dropdown selector:
+   - Blue curve: Community distribution (estimated from percentiles)
+   - Colored dotted lines: Community percentiles (P10, P25, P50, P75, P90)
+   - Green bold line: Player's average
+   - Dynamically updates title: "{Metric} Compared To Community Distribution"
+4. **Kill and Death Locations** - Scatter plot overlaid on minimap (600x600px, centered, bottom of page)
    - Legend positioned in top right inside chart
-4. **Player Percentile Distribution** - Normal distribution with dropdown selector (600px height)
-   - Shows player's personal variance across matches (NOT community distribution)
-   - Includes ±1 standard deviation reference lines
-   - Dynamically updates title: "{Metric} Probability Distribution Function"
-5. **KDA Trend Over Time** - 7-day rolling average with raw data scatter points
+5. **MMR History** - 7-day rolling average showing MMR progression over time
+   - Dual Y-axis: MMR (left) and Rank tier (right)
+6. **KDA Trend Over Time** - 7-day rolling average with raw data scatter points
    - Hover only works on average lines, not scatter points
 
 ### Key Endpoints
@@ -97,17 +107,22 @@ The Flask app provides an interactive analytics dashboard with:
 ## Data Flow
 
 1. **User Input**: Player enters SteamID3 format player ID (e.g., 199540209)
-2. **API Calls**: Flask app fetches data from multiple endpoints:
-   - `/v2/heroes` - Hero names and metadata
+2. **API Calls**: Flask app fetches data from 9 endpoints:
+   - `/v2/heroes` - Hero names and metadata (includes images via flattened columns)
    - `/v1/players/{id}/match-history` - Match details
    - `/v1/players/steam-search?search_query={id}` - Steam profile (username, avatar)
-   - `/v1/analytics/player-stats/metrics` - Player statistics with percentiles
+   - `/v1/analytics/player-stats/metrics?account_id={id}` - Player statistics with community percentiles (use singular)
    - `/v1/analytics/player-performance-curve` - Performance over game time
    - `/v1/analytics/kill-death-stats` - Spatial kill/death data
+   - `/v1/players/{id}/mmr-history` - MMR progression with division and tier
+   - `/v2/ranks` - Rank metadata including badge images
+   - `/v1/images` - Asset images (heroes, items, abilities)
 3. **Data Processing**: pandas DataFrames with joins and transformations
 4. **Steam Profile Filtering**: Filter steam-search results by matching account_id
-5. **Visualization**: Plotly charts rendered in browser with Steam theme
-6. **Display**: Interactive dashboard with player profile and multiple charts
+5. **Top Heroes Calculation**: Group by hero_name, calculate matches and win rate
+6. **Rank Badge Extraction**: Use latest game's division and division_tier
+7. **Visualization**: Plotly charts rendered in browser with Steam theme
+8. **Display**: Interactive dashboard with player profile, rank badge, top heroes, and charts
 
 ## Important Implementation Details
 
@@ -157,24 +172,67 @@ for profile in steam_profile:
         }
 ```
 
+### Rank Badge Integration
+```python
+# Get latest game's rank info
+df_mmr = pd.json_normalize(mmr_data)
+latest_game = df_mmr.iloc[-1]
+division = latest_game.get('division')  # Tier (0-11)
+division_tier = latest_game.get('division_tier', 0)  # Subrank (1-6)
+
+# Match with ranks endpoint to get badge image
+for rank in ranks_data:
+    if rank.get('tier') == division:
+        images = rank.get('images', {})
+        badge_key = f'small_subrank{division_tier}' if division_tier > 0 else 'small'
+        rank_badge_url = images.get(badge_key) or images.get('small')
+```
+
+### Top 5 Heroes Calculation
+```python
+# Group by hero_name and calculate stats
+hero_stats = df_match_history.groupby('hero_name').agg({
+    'match_id': 'count',  # Total matches
+    'result': lambda x: (x == 'Win').sum()  # Total wins
+}).rename(columns={'match_id': 'matches', 'result': 'wins'})
+
+# Calculate win rate and sort
+hero_stats['win_rate'] = (hero_stats['wins'] / hero_stats['matches'] * 100).round(1)
+hero_stats = hero_stats.sort_values('matches', ascending=False).head(5)
+
+# Get hero icons from flattened heroes endpoint columns
+for img_key in ['images.icon_hero_card', 'images.icon_image_small']:
+    if img_key in hero_row.index and pd.notna(hero_row[img_key]):
+        icon_url = hero_row[img_key]
+```
+
 ### Dynamic Chart Titles
 ```python
 # Performance Curve dropdown updates title dynamically
-'title.text': f"Average {metric['name']} Over Game Time"
+'title.text': f"Cumulative {metric['name']} Over Game Time"
 
-# Distribution chart dropdown updates title dynamically
-'title.text': f"{metric['name']} Probability Distribution Function"
+# Community Distribution chart dropdown updates title dynamically
+'title.text': f"{metric['name']} Compared To Community Distribution"
 ```
 
-### Distribution Chart Interpretation
-**IMPORTANT**: The distribution chart shows the player's personal performance variance across their own matches, NOT the community distribution. The curve is centered on the player's average because it uses their personal mean and standard deviation:
+### Community Distribution Chart
+**IMPORTANT**: The distribution chart shows the player's performance compared to community distribution:
 ```python
-avg = float(df_player_stats[f'{metric_key}.avg'].iloc[0])  # Player's average
-std_dev = float(df_player_stats[f'{metric_key}.std'].iloc[0])  # Player's std dev
-x_range = np.linspace(avg - 4*std_dev, avg + 4*std_dev, 200)
-y_range = stats.norm.pdf(x_range, avg, std_dev)
+# Use P50 (median) as community mean
+community_mean = percentiles.get(50, player_avg)
+
+# Estimate std from IQR for curve visualization
+iqr = percentiles[75] - percentiles[25]
+community_std = iqr / 1.35
+
+# Generate normal distribution curve
+x_range = np.linspace(community_mean - 4*community_std, community_mean + 4*community_std, 300)
+y_range = stats.norm.pdf(x_range, community_mean, community_std)
 ```
-The percentile data from the API (percentile1, percentile5, etc.) represents community benchmarks but is not currently used to generate the curve.
+
+**Percentiles Displayed**: P10, P25, P50, P75, P90 (P1, P5, P95, P99 removed for clarity)
+- Each percentile is shown as a colored dotted vertical line
+- Player's average shown as green bold line for comparison
 
 ### Steam Theme Styling
 - Dark blue gradients: `#1b2838`, `#16202d`, `#2a475e`
@@ -183,7 +241,11 @@ The percentile data from the API (percentile1, percentile5, etc.) represents com
 - Chart titles: 22px, Steam blue (#66c0f4)
 - Container max-width: 1200px
 - Header padding: 50px
-- Chart heights: 600px for side-by-side charts (Kill/Death Map, Distribution)
+- Chart heights: 600px for distribution chart
+- Deadlock logo: 125px width, 120px height, opacity transition (0.6 → 1.0 on hover)
+- Loading spinner: Full-screen overlay with Steam-themed spinner and glow effect
+- Player profile text: Left-justified username and Steam ID
+- Rank badge: 48x48px with tooltip on hover
 - JavaScript `applySteamTheme()` function preserves chart properties while applying colors
 
 ## Dependencies
@@ -244,3 +306,36 @@ uv add <package-name>
 - Check file permissions
 - Verify Flask static folder configuration
 - Test URL: http://localhost:5000/static/img/minimap.png
+
+## Documentation
+
+### README.md
+The project includes a comprehensive README with:
+- **Banner Image**: Cityscape graphic (`static/img/graphic_cityscape.png`) displayed at full width
+- **Quick Start Guide**: Installation and setup instructions using `uv`
+- **Features List**: Overview of all dashboard capabilities
+- **Technology Stack**: Key libraries and frameworks
+- **Project Structure**: Directory layout
+- **API Documentation Links**: References to Deadlock API resources
+
+### Custom Fonts
+- **ForevsDemo** font family (14 variants) in `static/fonts/`
+- Installed system-wide with: `cp static/fonts/*.otf ~/.local/share/fonts/ && fc-cache -fv`
+- Font family name: "Forevs Demo"
+- Available styles: Regular, Bold, Black, Medium, Light, Thin, Super (with Italic variants)
+
+## Important API Notes
+
+### Use Singular Parameter
+```python
+# CORRECT
+endpoint = f"/v1/analytics/player-stats/metrics?account_id={player_id}"
+
+# INCORRECT (returns wrong data)
+endpoint = f"/v1/analytics/player-stats/metrics?account_ids={player_id}"
+```
+
+### Hero Icon Sources
+- Use flattened columns from `/v2/heroes` endpoint: `images.icon_hero_card`, `images.icon_image_small`, etc.
+- Class names don't always match image names (e.g., "Mina" → "vampirebat")
+- Don't rely on `/v1/images` endpoint for hero matching by name

@@ -29,9 +29,13 @@ deadlock-analytics/
 │   ├── index.html             # Landing page with player ID input
 │   └── results.html           # Analytics dashboard with charts
 ├── static/                     # Static assets
+│   ├── fonts/                 # Custom fonts
+│   │   └── ForevsDemo-*.otf  # ForevsDemo font family (14 variants)
 │   └── img/
 │       ├── minimap.png        # Deadlock minimap image (512x512px)
-│       └── deadlock-logo.png  # Deadlock logo for branding
+│       ├── graphic_cityscape.png  # Banner image for README
+│       ├── deadlock-logo-no-title-flat.png  # Deadlock logo (flat version)
+│       └── Deadlock-icon-no-title.webp      # Deadlock icon
 ├── scripts/                    # Analysis scripts and notebooks
 │   ├── deadlock_notebook.py  # Original marimo notebook
 │   └── analyze_schema.py     # API schema analysis tool
@@ -46,7 +50,7 @@ deadlock-analytics/
 ├── pyproject.toml             # Project dependencies and metadata
 ├── uv.lock                    # Locked dependency versions
 ├── CLAUDE.md                  # This file
-└── README.md                  # Project readme
+└── README.md                  # Project readme with cityscape banner
 ```
 
 ## Quick Start
@@ -86,7 +90,7 @@ python app.py
 
 1. Enter a player ID in SteamID3 format (e.g., `199540209`)
 2. Click "Analyze Player Stats"
-3. View interactive analytics dashboard with Steam profile, 5 KPI tiles, and 5 visualizations
+3. View interactive analytics dashboard with Steam profile, rank badge, 5 KPI tiles, top 5 heroes, and 7 visualizations
 
 ## Flask Web Application
 
@@ -97,9 +101,10 @@ The Flask application provides a comprehensive player analytics dashboard with S
 #### Header Section
 - **Player Profile** (left side):
   - Steam avatar (120x120px) with blue border and glow effect
-  - Username (displayed in large font)
-  - Steam ID (below username)
-- **Deadlock Logo** (center): Positioned at 45% vertical alignment
+  - Username (displayed in large font, left-justified) with rank badge next to it
+  - Rank badge (48x48px) with hover tooltip showing rank name and tier
+  - Steam ID (below username, left-justified)
+- **Deadlock Logo** (center): Flat version, 125px width, 120px height, positioned at 45% vertical alignment with opacity transition effect
 - **Navigation Button** (right side): "Analyze Another Player"
 - **Container**: Max-width 1200px, 50px padding, dark gradient background
 
@@ -137,19 +142,51 @@ The Flask application provides a comprehensive player analytics dashboard with S
 - **Purpose**: Identify hot zones, safe areas, and positioning patterns
 - **Title**: "Kill and Death Locations"
 
-#### Chart 4: Player Percentile Distribution (Interactive Dropdown)
+#### Chart 4: Community Distribution Comparison (Interactive Dropdown)
 - **Type**: Normal distribution curve with dropdown selector (600px height)
 - **Metrics Available**: Kills, Deaths, Assists, K/D, KDA, Net Worth, Souls Per Minute, Last Hits, Denies, Player Damage, Player Damage Per Minute
 - **Description**:
-  - Blue filled curve: Normal distribution
-  - Green dashed line: Player's average
-  - Gray dotted lines: ±1 standard deviation
-- **Dynamic Title**: "{Metric} Probability Distribution Function" (e.g., "Kills Probability Distribution Function")
-- **Important Note**: Shows player's personal variance across their own matches, NOT community distribution
-- **Purpose**: Visualize performance consistency and variance
-- **Layout**: Side-by-side with Kill/Death Locations chart
+  - Blue filled curve: Community distribution (estimated from percentiles)
+  - Colored dotted lines: Community percentiles (P10, P25, P50, P75, P90)
+  - Green bold line: Player's average
+- **Percentiles Displayed**: P10, P25, P50 (median), P75, P90 (P1, P5, P95, P99 removed for clarity)
+- **Dynamic Title**: "{Metric} Compared To Community Distribution" (e.g., "Kills Compared To Community Distribution")
+- **Purpose**: Compare player performance against community benchmarks
+- **Layout**: Stacked vertically above Kill/Death Locations chart
 
-#### Chart 5: KDA Trend Over Time
+#### Top 5 Heroes Section
+- **Type**: Card grid displaying most-played heroes
+- **Description**:
+  - Hero icon (from heroes endpoint via `images.icon_hero_card` or similar)
+  - Hero name
+  - Total matches played
+  - Win rate percentage
+- **Layout**: 5-card horizontal grid with Steam-themed styling
+- **Data Source**: Grouped by `hero_name` from match history
+- **Purpose**: Show player's hero preferences and performance
+
+#### Chart 5: Kill and Death Locations
+- **Type**: Scatter plot overlaid on minimap (600x600px)
+- **Description**:
+  - Green markers: Kill locations with count
+  - Red markers: Death locations with count
+  - Overlaid on Deadlock minimap
+  - Legend positioned in top right corner (inside chart)
+- **Purpose**: Identify hot zones, safe areas, and positioning patterns
+- **Title**: "Kill and Death Locations"
+- **Layout**: Bottom of page, centered in container (max-width 600px)
+
+#### Chart 6: MMR History
+- **Type**: Line chart with 7-day rolling average
+- **Description**:
+  - Primary Y-axis (left): MMR score in orange
+  - Secondary Y-axis (right): Rank tier (0-11)
+  - Bold line: 7-day rolling average for smoothing
+  - X-axis: Match timestamps
+- **Purpose**: Track rank progression and MMR changes over time
+- **Title**: "MMR History (7-Day Rolling Average)"
+
+#### Chart 7: KDA Trend Over Time
 - **Type**: Line chart with 7-day rolling average
 - **Description**:
   - Bold lines: 7-day rolling average (Kills, Deaths, Assists)
@@ -204,13 +241,16 @@ The entire application uses Steam's signature aesthetic:
 ### Data Processing Pipeline
 
 1. **Input Validation**: Validate player ID format (SteamID3)
-2. **API Calls**: Fetch data from 7 endpoints:
-   - `/v2/heroes` - Hero names and metadata
+2. **API Calls**: Fetch data from 9 endpoints:
+   - `/v2/heroes` - Hero names and metadata (includes images via flattened columns)
    - `/v1/players/{id}/match-history` - Match details
    - `/v1/players/steam-search?search_query={id}` - Steam profile data
-   - `/v1/analytics/player-stats/metrics` - Player statistics with percentiles
+   - `/v1/analytics/player-stats/metrics` - Player statistics with community percentiles
    - `/v1/analytics/player-performance-curve` - Performance metrics over game time
    - `/v1/analytics/kill-death-stats` - Spatial kill/death coordinates
+   - `/v1/players/{id}/mmr-history` - MMR progression over time
+   - `/v2/ranks` - Rank metadata including badge images
+   - `/v1/images` - Asset images (heroes, items, abilities)
 3. **Data Transformation**:
    - Convert to pandas DataFrames with `json_normalize()`
    - Filter steam-search results by matching account_id
@@ -266,12 +306,15 @@ See `/docs/api_schema_reference.md` for comprehensive documentation including:
 
 | Endpoint | Purpose | Returns |
 |----------|---------|---------|
-| `/v2/heroes` | Hero metadata | List of 53 heroes with names, images, stats |
+| `/v2/heroes` | Hero metadata | List of 53 heroes with names, images (flattened), stats |
 | `/v1/players/{id}/match-history` | Match details | List of matches (21 columns per match) |
 | `/v1/players/steam-search` | Steam profile lookup | List of matching profiles with username, avatars |
-| `/v1/analytics/player-stats/metrics` | Player statistics | Averages, std dev, and percentiles for all metrics |
+| `/v1/analytics/player-stats/metrics` | Player statistics | Averages, std dev, and community percentiles (P1-P99) |
 | `/v1/analytics/player-performance-curve` | Performance over game time | 12 time intervals with avg stats |
 | `/v1/analytics/kill-death-stats` | Kill/death locations | List of map coordinates with counts |
+| `/v1/players/{id}/mmr-history` | MMR progression | List of games with MMR score, division, tier |
+| `/v2/ranks` | Rank metadata | List of ranks with badge images and tier info |
+| `/v1/images` | Asset images | Dictionary of image URLs for heroes, items, abilities |
 
 ### Rate Limits
 - No authentication required for public endpoints
@@ -711,6 +754,26 @@ When making changes:
    - All charts display
    - No console errors
    - API calls succeed
+
+## Documentation
+
+### README.md
+The project includes a comprehensive README with:
+- **Banner Image**: Cityscape graphic (`static/img/graphic_cityscape.png`) displayed at full width
+- **Quick Start Guide**: Installation and setup instructions using `uv`
+- **Features List**: Overview of all dashboard capabilities
+- **Technology Stack**: Key libraries and frameworks
+- **Project Structure**: Directory layout
+- **API Documentation Links**: References to Deadlock API resources
+
+The README is designed for GitHub display and uses proper markdown formatting with HTML for the banner image.
+
+### Custom Fonts
+The project includes the **ForevsDemo** font family (14 variants) located in `static/fonts/`:
+- Regular, Bold, Black, Medium, Light, Thin, Super (with Italic variants)
+- Can be installed system-wide or per-user with `fc-cache -fv`
+- Font family name: "Forevs Demo"
+- Useful for creating custom graphics and SVG banners
 
 ## Resources
 

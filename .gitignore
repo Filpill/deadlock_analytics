@@ -13,3 +13,6 @@ env/
 
 # Marimo cache
 __marimo__/
+
+# Design files
+static/gimp/
