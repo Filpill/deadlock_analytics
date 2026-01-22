@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "deadlock-api-client",
     "flask>=3.1.2",
+    "gunicorn>=23.0.0",
     "marimo>=0.19.4",
     "numpy>=2.4.1",
     "pandas>=2.3.3",

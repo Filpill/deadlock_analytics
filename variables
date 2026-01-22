@@ -1,0 +1,18 @@
+#/bin/bash
+GCP_PROJECT="deadlock-485121"
+IMAGE_NAME="flask_deadlock_analytics_app"
+IMAGE_TAG="latest"
+CONTAINER_NAME="flask_deadlock_analytics_container"
+AR_TYPE="europe-west2-docker.pkg.dev"
+AR_REPO="deadlock-repo"
+EXTERNAL_PORT="5432"
+INTERNAL_PORT="22"
+
+export GCP_PROJECT
+export IMAGE_NAME
+export IMAGE_TAG
+export CONTAINER_NAME
+export AR_TYPE
+export AR_REPO
+export EXTERNAL_PORT
+export INTERNAL_PORT

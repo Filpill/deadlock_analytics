@@ -25,9 +25,12 @@ Deadlock Analytics is a comprehensive Python-based analytics platform for Deadlo
 ```
 deadlock-analytics/
 ├── app.py                      # Flask web application (main entry point)
+├── Dockerfile                  # Cloud Run optimized Docker image
+├── .dockerignore               # Docker build exclusions
+├── .gcloudignore               # Cloud Build exclusions
 ├── templates/                  # HTML templates for Flask
-│   ├── index.html             # Landing page with player ID input
-│   └── results.html           # Analytics dashboard with charts
+│   ├── index.html             # Landing page with player ID input (with audio)
+│   └── results.html           # Analytics dashboard with charts (with audio + hero filtering)
 ├── static/                     # Static assets
 │   ├── fonts/                 # Custom fonts
 │   │   └── ForevsDemo-*.otf  # ForevsDemo font family (14 variants)
@@ -35,7 +38,15 @@ deadlock-analytics/
 │       ├── minimap.png        # Deadlock minimap image (512x512px)
 │       ├── graphic_cityscape.png  # Banner image for README
 │       ├── deadlock-logo-no-title-flat.png  # Deadlock logo (flat version)
+│       ├── catalog_tooltip_bg_modifies_vitality.webp  # Background image
 │       └── Deadlock-icon-no-title.webp      # Deadlock icon
+├── terraform/                  # Infrastructure as Code
+│   ├── main.tf                # Cloud Run service configuration
+│   ├── variables.tf           # Terraform variables (pre-configured)
+│   ├── outputs.tf             # Service outputs (URL, name, etc.)
+│   ├── .gitignore             # Terraform state exclusions
+│   ├── terraform.tfvars.example  # Example variable file
+│   └── README.md              # Terraform deployment guide
 ├── scripts/                    # Analysis scripts and notebooks
 │   ├── deadlock_notebook.py  # Original marimo notebook
 │   └── analyze_schema.py     # API schema analysis tool
@@ -44,13 +55,13 @@ deadlock-analytics/
 ├── __marimo__/                 # Marimo notebook cache and sessions
 │   └── session/               # Session data
 ├── .venv/                     # Virtual environment (managed by uv)
-├── .claude                    # Claude Code configuration
-├── .gitignore                 # Git ignore patterns
+├── .claude/                   # Claude Code configuration
+├── .gitignore                 # Git ignore patterns (includes Python cache)
 ├── .python-version            # Python version specification (3.12)
 ├── pyproject.toml             # Project dependencies and metadata
 ├── uv.lock                    # Locked dependency versions
 ├── CLAUDE.md                  # This file
-└── README.md                  # Project readme with cityscape banner
+└── README.md                  # Project readme with live deployment link
 ```
 
 ## Quick Start
@@ -91,6 +102,151 @@ python app.py
 1. Enter a player ID in SteamID3 format (e.g., `199540209`)
 2. Click "Analyze Player Stats"
 3. View interactive analytics dashboard with Steam profile, rank badge, 5 KPI tiles, top 5 heroes, and 7 visualizations
+
+## Docker Deployment (Google Cloud Run)
+
+**Live Application**: https://deadlock-analytics-164941517977.europe-west2.run.app
+
+The application is deployed to Google Cloud Run in the `europe-west2` region (London).
+
+### Production Configuration
+
+- **Project**: deadlock-485121
+- **Service**: deadlock-analytics
+- **Region**: europe-west2
+- **Service Account**: sa-deadlock-cloud-run@deadlock-485121.iam.gserviceaccount.com
+- **Container Registry**: europe-west2-docker.pkg.dev/deadlock-485121/deadlock-repo/flask_deadlock_analytics_app
+
+### Deployment Methods
+
+#### Option 1: Terraform (Recommended for Infrastructure as Code)
+
+```bash
+# 1. Build and push Docker image
+docker build -t flask_deadlock_analytics_app:latest .
+docker tag flask_deadlock_analytics_app:latest \
+  europe-west2-docker.pkg.dev/deadlock-485121/deadlock-repo/flask_deadlock_analytics_app:latest
+
+# Configure Docker authentication
+gcloud auth configure-docker europe-west2-docker.pkg.dev
+
+# Push image
+docker push europe-west2-docker.pkg.dev/deadlock-485121/deadlock-repo/flask_deadlock_analytics_app:latest
+
+# 2. Deploy with Terraform
+cd terraform
+terraform init
+terraform plan
+terraform apply
+
+# 3. Get service URL
+terraform output service_url
+```
+
+**Terraform Configuration** (`terraform/variables.tf`):
+- Pre-configured with production values
+- Memory: 2Gi, CPU: 2 cores
+- Timeout: 120 seconds
+- Scaling: 0-10 instances
+- Public access enabled
+
+See `terraform/README.md` for:
+- Complete deployment guide
+- Configuration options
+- State management
+- CI/CD integration
+- Cost estimation
+
+#### Option 2: gcloud CLI (Manual Deployment)
+
+```bash
+# Deploy directly from source
+gcloud run deploy deadlock-analytics \
+  --source . \
+  --region europe-west2 \
+  --allow-unauthenticated \
+  --memory 2Gi \
+  --cpu 2 \
+  --timeout 120
+
+# Or build and deploy manually
+docker build -t deadlock-analytics:latest .
+docker tag deadlock-analytics:latest gcr.io/deadlock-485121/deadlock-analytics:latest
+gcloud auth configure-docker
+docker push gcr.io/deadlock-485121/deadlock-analytics:latest
+gcloud run deploy deadlock-analytics \
+  --image gcr.io/deadlock-485121/deadlock-analytics:latest \
+  --region europe-west2
+```
+
+### Docker Configuration (Cloud Run Optimized)
+
+**Dockerfile** (located in project root):
+- **Base Image**: `python:3.12-slim` for minimal footprint (~300-400MB)
+- **WSGI Server**: Gunicorn with inline configuration
+- **Workers**: 2 workers (Cloud Run scales via container instances, not workers)
+- **Threads**: 4 threads per worker for concurrent request handling
+- **Timeout**: 120 seconds for long-running API requests
+- **Package Manager**: uv for fast dependency installation
+- **Port**: Uses `$PORT` environment variable (Cloud Run default: 8080)
+- **Scaling**: Auto-scales from 0 to max instances based on load
+- **Logging**: stdout/stderr integrated with Google Cloud Logging
+
+**Key Settings**:
+```dockerfile
+CMD exec gunicorn \
+    --bind 0.0.0.0:$PORT \
+    --workers 2 \
+    --threads 4 \
+    --timeout 120 \
+    --graceful-timeout 30 \
+    --log-level info \
+    --access-logfile - \
+    --error-logfile - \
+    app:app
+```
+
+**No separate gunicorn.conf.py needed** - all settings are inline in the Dockerfile CMD.
+
+### Build Context
+
+The Dockerfile is in the project root and expects to be built from the root directory:
+
+```bash
+# Correct (from project root)
+docker build -t deadlock-analytics .
+
+# Incorrect (don't use -f flag pointing elsewhere)
+docker build -f some/path/Dockerfile -t deadlock-analytics .
+```
+
+### Service Configuration
+
+Cloud Run service is configured with:
+- **Memory**: 2Gi (sufficient for API responses and data processing)
+- **CPU**: 2 cores (handles concurrent requests efficiently)
+  - *Can increase to 4 cores for higher concurrency if needed*
+- **Timeout**: 120 seconds (allows time for Deadlock API calls and chart generation)
+- **Concurrency**: 80 requests per container instance (default)
+- **Min Instances**: 0 (scales to zero when idle for cost savings)
+- **Max Instances**: 10 (prevents runaway costs)
+- **Authentication**: Public access (allUsers can invoke)
+
+### Monitoring and Logs
+
+```bash
+# View service details
+gcloud run services describe deadlock-analytics --region europe-west2
+
+# Stream logs
+gcloud run services logs tail deadlock-analytics --region europe-west2 --follow
+
+# View recent logs
+gcloud run services logs read deadlock-analytics --region europe-west2 --limit 50
+
+# View metrics
+# https://console.cloud.google.com/run/detail/europe-west2/deadlock-analytics/metrics?project=deadlock-485121
+```
 
 ## Flask Web Application
 
@@ -805,6 +961,9 @@ dependencies = [
     "pandas>=2.3.3",
     "flask>=3.1.2",
     "plotly>=6.5.2",
+    "scipy>=1.17.0",
+    "numpy>=2.4.1",
+    "gunicorn>=23.0.0",  # Production WSGI server
 ]
 ```
 
@@ -831,6 +990,150 @@ uv sync
       subdirectory = "python/api"
   }
   ```
+
+## Terraform Infrastructure
+
+The application uses Terraform for infrastructure as code deployment to Google Cloud Run.
+
+### Terraform Structure
+
+```
+terraform/
+├── main.tf                    # Cloud Run service resource
+├── variables.tf               # Configuration variables (pre-configured)
+├── outputs.tf                 # Service outputs (URL, name, location)
+├── terraform.tfvars.example   # Example configuration
+├── .gitignore                 # Excludes state files
+└── README.md                  # Deployment guide
+```
+
+### Pre-configured Values
+
+The Terraform configuration comes pre-configured for production:
+
+```hcl
+# variables.tf defaults
+project_id      = "deadlock-485121"
+region          = "europe-west2"
+service_name    = "deadlock-analytics"
+service_account = "sa-deadlock-cloud-run@deadlock-485121.iam.gserviceaccount.com"
+container_image = "europe-west2-docker.pkg.dev/deadlock-485121/deadlock-repo/flask_deadlock_analytics_app:latest"
+
+# Resource allocation
+memory        = "2Gi"
+cpu           = "2"
+timeout       = 120
+
+# Scaling
+min_instances = 0
+max_instances = 10
+```
+
+### Terraform Workflow
+
+**Initial Deployment**:
+```bash
+cd terraform
+terraform init          # Initialize providers and modules
+terraform plan          # Preview changes
+terraform apply         # Apply changes (creates Cloud Run service)
+terraform output        # View service URL and details
+```
+
+**Update Deployment**:
+```bash
+# Modify variables.tf or create terraform.tfvars
+terraform plan          # Review changes
+terraform apply         # Apply updates
+```
+
+**Destroy Service**:
+```bash
+terraform destroy       # Remove all Terraform-managed resources
+```
+
+### Key Terraform Resources
+
+**main.tf** defines:
+1. **google_cloud_run_v2_service**: The Cloud Run service
+   - Container image from Artifact Registry
+   - Service account attachment
+   - Resource limits (CPU, memory)
+   - Scaling configuration
+   - Timeout settings
+   - Port configuration (8080)
+
+2. **google_cloud_run_v2_service_iam_member**: Public access policy
+   - Role: `roles/run.invoker`
+   - Member: `allUsers` (public access)
+
+### Outputs
+
+After deployment, Terraform provides:
+- `service_url`: Full HTTPS URL of the deployed service
+- `service_name`: Name of the Cloud Run service
+- `service_location`: GCP region where service is deployed
+- `service_id`: Full resource ID for the service
+
+### State Management
+
+**Local State** (default):
+- State stored in `terraform.tfstate`
+- Good for single-user development
+- Included in `.gitignore`
+
+**Remote State** (recommended for teams):
+```hcl
+# Create backend.tf
+terraform {
+  backend "gcs" {
+    bucket = "deadlock-485121-terraform-state"
+    prefix = "cloud-run/deadlock-analytics"
+  }
+}
+```
+
+Then migrate state:
+```bash
+gsutil mb gs://deadlock-485121-terraform-state
+gsutil versioning set on gs://deadlock-485121-terraform-state
+terraform init -migrate-state
+```
+
+### Terraform Best Practices
+
+1. **Version Control**: Commit Terraform files (.tf) to git
+2. **State Security**: Never commit .tfstate files
+3. **Variable Files**: Use terraform.tfvars for environment-specific values
+4. **Plan Before Apply**: Always run `terraform plan` first
+5. **Remote State**: Use GCS backend for team collaboration
+6. **Resource Tagging**: Consider adding labels for cost tracking
+
+### CI/CD Integration
+
+Example GitHub Actions workflow:
+```yaml
+name: Deploy to Cloud Run
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: hashicorp/setup-terraform@v2
+      - uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Terraform Init
+        run: terraform init
+        working-directory: terraform
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+        working-directory: terraform
+```
 
 ## Troubleshooting
 
@@ -880,6 +1183,115 @@ uv sync
 - Top 5 heroes should always show (uses unfiltered data copy)
 - Clear filter button navigates to `/analyze?player_id={id}` (no hero_id)
 - If charts show "Insufficient match data", hero may have too few matches
+
+### Docker Issues
+
+**Build Failures**
+```bash
+# Check Dockerfile syntax
+docker build -t test .
+
+# View build logs
+docker build --progress=plain -t test .
+
+# Check if files are being copied correctly
+docker build -t test . && docker run --rm test ls -la /app
+```
+
+**Container Won't Start**
+```bash
+# Check container logs
+docker logs CONTAINER_ID
+
+# Run interactively to debug
+docker run -it --entrypoint /bin/bash IMAGE_NAME
+
+# Test gunicorn command manually
+docker run -it --entrypoint /bin/bash IMAGE_NAME
+# Then inside container:
+gunicorn --bind 0.0.0.0:8080 --workers 2 --threads 4 --timeout 120 app:app
+```
+
+**Image Size Issues**
+- Image should be ~300-400MB compressed
+- Check layers: `docker history IMAGE_NAME`
+- Use `.dockerignore` to exclude unnecessary files
+- Verify uv is caching correctly
+
+### Cloud Run Issues
+
+**Deployment Failures**
+```bash
+# Check service status
+gcloud run services describe deadlock-analytics --region europe-west2
+
+# View recent logs
+gcloud run services logs read deadlock-analytics --region europe-west2 --limit 100
+
+# Check deployment history
+gcloud run revisions list --service deadlock-analytics --region europe-west2
+```
+
+**502 Bad Gateway**
+- Usually indicates container startup timeout or crash
+- Check if container is listening on `$PORT` (8080)
+- Verify gunicorn binds to `0.0.0.0:$PORT`, not `127.0.0.1`
+- Check memory limits aren't being exceeded
+- Review startup logs for errors
+
+**Cold Start Issues**
+- First request after idle period may timeout
+- Consider setting `min_instances = 1` to keep warm (costs more)
+- Optimize container startup time
+- Check timeout is sufficient (120s default)
+
+**High Memory Usage**
+- Monitor in Cloud Console metrics
+- Increase memory allocation: `terraform apply -var="memory=4Gi"`
+- Check for memory leaks in application
+- Review pandas DataFrame sizes
+
+**Performance Issues**
+- Check Cloud Run metrics for CPU/memory utilization
+- Consider increasing CPU: `terraform apply -var="cpu=4"`
+- Review API call latency to Deadlock API
+- Check number of concurrent requests
+- Verify gunicorn worker/thread configuration
+
+### Terraform Issues
+
+**State Errors**
+```bash
+# Refresh state
+terraform refresh
+
+# View current state
+terraform show
+
+# Unlock state (if locked)
+terraform force-unlock LOCK_ID
+```
+
+**Plan Shows Unexpected Changes**
+- Check if resources were modified outside Terraform
+- Review drift: `terraform plan -refresh-only`
+- Import existing resources: `terraform import`
+
+**Permission Errors**
+- Verify service account has correct IAM roles
+- Check project ID is correct
+- Ensure APIs are enabled (Cloud Run, Artifact Registry)
+
+**Image Not Found**
+```bash
+# Verify image exists in registry
+gcloud artifacts docker images list \
+  europe-west2-docker.pkg.dev/deadlock-485121/deadlock-repo
+
+# Re-tag and push image
+docker tag IMAGE_NAME europe-west2-docker.pkg.dev/deadlock-485121/deadlock-repo/flask_deadlock_analytics_app:latest
+docker push europe-west2-docker.pkg.dev/deadlock-485121/deadlock-repo/flask_deadlock_analytics_app:latest
+```
 
 ### Dependency Issues
 
@@ -1049,36 +1461,60 @@ The project includes the **ForevsDemo** font family (14 variants) located in `st
 
 ## Recent Features (v0.2.0)
 
+**Production Deployment** (2026-01-22)
+- ✅ Deployed to Google Cloud Run (europe-west2)
+- ✅ Live at: https://deadlock-analytics-164941517977.europe-west2.run.app
+- ✅ Terraform infrastructure as code configuration
+- ✅ Docker containerization with Gunicorn WSGI server
+- ✅ Auto-scaling from 0-10 instances
+- ✅ 2Gi memory, 2 CPU cores per instance
+- ✅ Artifact Registry integration
+
 **Hero Filtering System** (2026-01-22)
 - ✅ Clickable hero cards to filter all dashboard data by hero_id
-- ✅ URL parameter support for bookmarkable filtered views
+- ✅ URL parameter support for bookmarkable filtered views (`?hero_id=X`)
 - ✅ Visual feedback with highlighted/dimmed cards and filter badges
 - ✅ Preserves top 5 heroes display when filtering
 - ✅ Backend filtering with GET request support
+- ✅ "Clear Filter" button to return to unfiltered view
 
 **Interactive Audio System** (2026-01-22)
-- ✅ Hero voicelines play on hero card selection
-- ✅ Sequential dirt footstep sounds on KPI tile clicks (cycles 1-14)
+- ✅ Hero voicelines play on hero card selection (random select sounds)
+- ✅ Sequential dirt footstep sounds on KPI tile clicks (cycles dirt_01 to dirt_14)
 - ✅ UI confirmation sounds for form submissions and navigation
 - ✅ Clickable avatar and logo with sound feedback
 - ✅ Fixed 50% volume for all audio
 - ✅ Promise-based async audio handling
+- ✅ Assets loaded from Deadlock Assets API
 
 ## Future Enhancements
 
 Potential features to add:
 
-- [ ] Caching layer for API responses
-- [ ] More chart types (radar charts, heatmaps)
-- [ ] Compare multiple players
-- [ ] Item build analysis
-- [ ] Match replay links
+### Application Features
+- [ ] Caching layer for API responses (reduce load on Deadlock API)
+- [ ] More chart types (radar charts, heatmaps, hero comparison radars)
+- [ ] Compare multiple players side-by-side
+- [ ] Item build analysis and recommendations
+- [ ] Match replay links and detailed match breakdowns
 - [ ] Export data to CSV/JSON
 - [ ] User authentication and saved dashboards
-- [ ] Real-time data refresh
 - [ ] Mobile-responsive design improvements
 - [ ] Adjustable volume control (currently fixed at 50%)
 - [ ] More audio feedback for additional interactions
+- [ ] Hero-specific performance insights and recommendations
+- [ ] Team composition analysis
+
+### Infrastructure
+- [ ] CDN integration for static assets
+- [ ] Redis caching layer for API responses
+- [ ] Cloud SQL for analytics data storage
+- [ ] Scheduled data refresh jobs (Cloud Scheduler)
+- [ ] Cloud Storage for user-generated content
+- [ ] Custom domain with Cloud Load Balancer
+- [ ] Multi-region deployment for lower latency
+- [ ] Monitoring dashboards and alerting (Cloud Monitoring)
+- [ ] Cost optimization analysis and recommendations
 
 ---
 

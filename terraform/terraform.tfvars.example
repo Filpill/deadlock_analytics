@@ -1,0 +1,26 @@
+# Terraform Variables Example
+# Copy this file to terraform.tfvars and customize as needed
+# terraform.tfvars is gitignored for security
+
+# GCP Project Configuration
+project_id = "deadlock-485121"
+region     = "europe-west2"
+
+# Cloud Run Service Configuration
+service_name    = "deadlock-analytics"
+service_account = "sa-deadlock-cloud-run@deadlock-485121.iam.gserviceaccount.com"
+container_image = "europe-west2-docker.pkg.dev/deadlock-485121/deadlock-repo/flask_deadlock_analytics_app:latest"
+
+# Resource Allocation
+memory  = "2Gi"  # Options: 512Mi, 1Gi, 2Gi, 4Gi, 8Gi
+cpu     = "2"    # Options: 1, 2, 4
+timeout = 120    # Request timeout in seconds (max 3600)
+
+# Scaling Configuration
+min_instances = 0   # Set to 1+ to keep instances warm (faster response, higher cost)
+max_instances = 10  # Maximum concurrent instances
+
+# Usage:
+# 1. Copy this file: cp terraform.tfvars.example terraform.tfvars
+# 2. Edit terraform.tfvars with your values
+# 3. Run: terraform apply
