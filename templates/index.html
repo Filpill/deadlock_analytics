@@ -20,9 +20,10 @@
             background-attachment: fixed;
             min-height: 100vh;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
+            justify-content: flex-start;
             align-items: center;
-            padding: 40px 20px;
+            padding: 60px 20px 40px;
             color: #c7d5e0;
             position: relative;
         }
@@ -36,6 +37,7 @@
             width: 100%;
             position: relative;
             z-index: 1;
+            margin-bottom: 20px;
         }
 
         @media (max-width: 1200px) {
@@ -312,6 +314,126 @@
                 max-width: 1200px;
             }
         }
+
+        /* Leaderboard styles */
+        .leaderboard-section {
+            width: 100%;
+            max-width: 1600px;
+            margin: 20px auto 0;
+            padding: 0;
+            position: relative;
+            z-index: 1;
+        }
+
+        .leaderboard-title {
+            color: #66c0f4;
+            text-align: center;
+            font-size: 2em;
+            font-weight: 300;
+            letter-spacing: 1px;
+            margin-bottom: 30px;
+            text-shadow: 0 0 20px rgba(102, 192, 244, 0.4);
+        }
+
+        .leaderboard-columns {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        @media (max-width: 1100px) {
+            .leaderboard-columns {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 900px) {
+            .leaderboard-columns {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 500px) {
+            .leaderboard-columns {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .leaderboard-column {
+            background: linear-gradient(to bottom, #2a475e 0%, #1b2838 100%);
+            border: 1px solid #3d4e5c;
+            border-radius: 4px;
+            padding: 15px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .leaderboard-player {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            margin-bottom: 6px;
+            background: rgba(22, 32, 45, 0.5);
+            border: 1px solid #3d4e5c;
+            border-radius: 3px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .leaderboard-player:hover {
+            background: rgba(102, 192, 244, 0.1);
+            border-color: #66c0f4;
+        }
+
+        .player-rank {
+            font-size: 0.85em;
+            font-weight: bold;
+            color: #66c0f4;
+            min-width: 30px;
+            text-align: center;
+            margin-right: 8px;
+        }
+
+        .player-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 3px;
+            margin-right: 8px;
+            border: 1px solid #3d4e5c;
+        }
+
+        .player-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .player-username {
+            color: #c7d5e0;
+            font-size: 0.9em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 2px;
+        }
+
+        .player-account-id {
+            color: #8f98a0;
+            font-size: 0.75em;
+            font-family: 'Courier New', monospace;
+        }
+
+        .player-rank-text {
+            font-size: 0.7em;
+            color: #66c0f4;
+            margin-left: 6px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            background: rgba(102, 192, 244, 0.1);
+            padding: 2px 6px;
+            border-radius: 2px;
+            border: 1px solid rgba(102, 192, 244, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -359,6 +481,39 @@
         </div>
         {% endif %}
     </div>
+
+    <!-- Leaderboard Section -->
+    {% if leaderboard %}
+    <div class="leaderboard-section">
+        <h2 class="leaderboard-title">Global Top 40 Players</h2>
+        <div class="leaderboard-columns">
+            {% for col in range(4) %}
+            <div class="leaderboard-column">
+                {% for i in range(10) %}
+                {% set idx = col * 10 + i %}
+                {% if idx < leaderboard|length %}
+                {% set player = leaderboard[idx] %}
+                <div class="leaderboard-player" data-account-id="{{ player.account_id }}">
+                    <div class="player-rank">#{{ player.rank }}</div>
+                    <img src="{{ player.avatar_url }}"
+                         alt="Avatar"
+                         class="player-avatar"
+                         onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg'">
+                    <div class="player-info">
+                        <div class="player-username">{{ player.username }}</div>
+                        <div class="player-account-id">{{ player.account_id }}</div>
+                    </div>
+                    {% if player.performance_rank %}
+                    <div class="player-rank-text">{{ player.performance_rank }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 
     <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner"></div>
@@ -423,6 +578,23 @@
 
             // Submit the form manually after sound finishes
             e.target.submit();
+        });
+
+        // Add click handlers to leaderboard players
+        document.querySelectorAll('.leaderboard-player').forEach(function(playerDiv) {
+            playerDiv.addEventListener('click', async function() {
+                const accountId = this.getAttribute('data-account-id');
+                if (accountId && accountId !== 'N/A') {
+                    // Show loading overlay
+                    document.getElementById('loadingOverlay').classList.add('active');
+
+                    // Play UI sound
+                    await playDataFetchedSound();
+
+                    // Navigate to analyze page
+                    window.location.href = `/analyze?player_id=${accountId}`;
+                }
+            });
         });
     </script>
 </body>
