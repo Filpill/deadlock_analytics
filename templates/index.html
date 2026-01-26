@@ -22,9 +22,27 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 20px;
+            padding: 40px 20px;
             color: #c7d5e0;
             position: relative;
+        }
+
+        .page-wrapper {
+            display: flex;
+            flex-direction: row;
+            align-items: stretch;
+            gap: 30px;
+            max-width: 1600px;
+            width: 100%;
+            position: relative;
+            z-index: 1;
+        }
+
+        @media (max-width: 1200px) {
+            .page-wrapper {
+                flex-direction: column;
+                align-items: center;
+            }
         }
 
         body::before {
@@ -43,12 +61,21 @@
             border-radius: 4px;
             box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
             padding: 60px 50px;
-            max-width: 600px;
-            width: 100%;
+            width: 600px;
+            flex-shrink: 0;
             text-align: center;
             border: 1px solid #3d4e5c;
             position: relative;
             z-index: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media (max-width: 1200px) {
+            .container {
+                width: 100%;
+                max-width: 600px;
+            }
         }
 
         h1 {
@@ -250,44 +277,87 @@
             font-size: 0.9em;
             letter-spacing: 0.5px;
         }
+
+        .rank-distribution-container {
+            background: linear-gradient(to bottom, #2a475e 0%, #1b2838 100%);
+            border: 1px solid #3d4e5c;
+            border-radius: 4px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            padding: 30px 40px;
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .rank-distribution-container h3 {
+            color: #66c0f4;
+            margin-bottom: 20px;
+            font-weight: 400;
+            font-size: 1.3em;
+            letter-spacing: 0.5px;
+            text-align: center;
+            text-shadow: 0 0 15px rgba(102, 192, 244, 0.3);
+            flex-shrink: 0;
+        }
+
+        .rank-distribution-container #rankDistributionChart {
+            flex: 1;
+            min-height: 0;
+        }
+
+        @media (max-width: 1200px) {
+            .rank-distribution-container {
+                width: 100%;
+                max-width: 1200px;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Deadlock Analytics</h1>
-        <p class="subtitle">Advanced player statistics and performance analysis</p>
-        <div class="steam-badge">Powered by Deadlock API</div>
+    <div class="page-wrapper">
+        <div class="container">
+            <h1>Deadlock Analytics</h1>
+            <p class="subtitle">Advanced player statistics and performance analysis</p>
+            <div class="steam-badge">Powered by Deadlock API</div>
 
-        {% if error %}
-        <div class="error">
-            {{ error }}
-        </div>
-        {% endif %}
-
-        <form method="POST" action="/analyze" id="analyzeForm">
-            <div class="form-group">
-                <label for="player_id">Player ID (SteamID3 Format)</label>
-                <input type="text"
-                       id="player_id"
-                       name="player_id"
-                       placeholder="e.g., 199540209"
-                       required
-                       autocomplete="off">
+            {% if error %}
+            <div class="error">
+                {{ error }}
             </div>
+            {% endif %}
 
-            <button type="submit">Analyze Player Stats</button>
-        </form>
+            <form method="POST" action="/analyze" id="analyzeForm">
+                <div class="form-group">
+                    <label for="player_id">Player ID (SteamID3 Format)</label>
+                    <input type="text"
+                           id="player_id"
+                           name="player_id"
+                           placeholder="e.g., 199540209"
+                           required
+                           autocomplete="off">
+                </div>
 
-        <div class="info-box">
+                <button type="submit">Analyze Player Stats</button>
+            </form>
+
+            <div class="info-box">
             <h3>How to find your Player ID</h3>
             <p>Your Player ID is in SteamID3 format. You can find it by:</p>
             <ul>
                 <li>Checking your Steam profile URL</li>
                 <li>Using a SteamID converter tool</li>
-                <li>Looking at in-game profile information</li>
             </ul>
             <p style="margin-top: 15px;"><strong>Example:</strong> <code>199540209</code></p>
+            </div>
         </div>
+
+        {% if rank_distribution %}
+        <div class="rank-distribution-container">
+            <h3>Player Rank Distribution (Last 30 Days)</h3>
+            <div id="rankDistributionChart"></div>
+        </div>
+        {% endif %}
     </div>
 
     <div class="loading-overlay" id="loadingOverlay">
@@ -295,6 +365,25 @@
         <div class="loading-text">Analyzing Player Data</div>
         <div class="loading-subtext">Fetching match history, statistics, and performance metrics...</div>
     </div>
+
+    <!-- Plotly for rank distribution chart -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <script>
+        // Render rank distribution chart if data is available
+        {% if rank_distribution %}
+        var rankDistChart = {{ rank_distribution | safe }};
+
+        // Apply Steam theme colors to the chart
+        rankDistChart.layout.paper_bgcolor = 'rgba(0, 0, 0, 0)';
+        rankDistChart.layout.plot_bgcolor = 'rgba(22, 32, 45, 0.4)';
+        rankDistChart.layout.font = { color: '#c7d5e0', family: 'Motiva Sans, Arial' };
+        rankDistChart.layout.xaxis.gridcolor = '#3d4e5c';
+        rankDistChart.layout.yaxis.gridcolor = '#3d4e5c';
+
+        Plotly.newPlot('rankDistributionChart', rankDistChart.data, rankDistChart.layout, {responsive: true});
+        {% endif %}
+    </script>
 
     <script>
         // Play UI sound when data is fetched

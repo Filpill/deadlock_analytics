@@ -488,6 +488,85 @@
             box-shadow: 0 0 15px rgba(217, 64, 64, 0.4);
         }
 
+        /* Filter subtitle for items table */
+        .filter-subtitle {
+            color: #8f98a0;
+            font-size: 12px;
+            margin: 10px 0 0 0;
+            padding: 0;
+        }
+
+        .filter-hero-name {
+            color: #66c0f4;
+            font-weight: 500;
+        }
+
+        /* Items table styling */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .items-table thead {
+            background: rgba(42, 71, 94, 0.4);
+            border-bottom: 2px solid #66c0f4;
+        }
+
+        .items-table th {
+            color: #66c0f4;
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 400;
+            font-size: 0.95em;
+            letter-spacing: 0.5px;
+        }
+
+        .items-table tbody tr {
+            border-bottom: 1px solid #3d4e5c;
+            transition: background-color 0.2s ease;
+        }
+
+        .items-table tbody tr:hover {
+            background: rgba(102, 192, 244, 0.1);
+        }
+
+        .items-table td {
+            padding: 12px 15px;
+            color: #c7d5e0;
+        }
+
+        .item-name-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .item-icon {
+            width: 40px;
+            height: 40px;
+            object-fit: cover;
+            border-radius: 3px;
+            border: 1px solid #3d4e5c;
+        }
+
+        .item-matches {
+            color: #8f98a0;
+            font-weight: 500;
+        }
+
+        .item-winrate {
+            color: #66c0f4;
+            font-weight: 500;
+        }
+
+        /* Responsive: stack on smaller screens */
+        @media (max-width: 900px) {
+            .chart-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
         /* Flex layout for title with badges */
         .top-heroes-title {
             display: flex;
@@ -659,9 +738,47 @@
             </div>
             {% endif %}
 
-            {% if charts.kd_stats %}
-            <div class="chart-container map-chart-container">
-                <div id="chart4"></div>
+            {% if charts.kd_stats or top_items %}
+            <div class="chart-row">
+                <!-- Left column: Kill/Death Map -->
+                {% if charts.kd_stats %}
+                <div class="chart-container">
+                    <div id="chart4"></div>
+                </div>
+                {% endif %}
+
+                <!-- Right column: Top 10 Items Table -->
+                {% if top_items %}
+                <div class="chart-container">
+                    <h3 class="chart-title">Top 10 Items Played</h3>
+                    {% if filtered_hero_name %}
+                    <p class="filter-subtitle">Filter Applied: <span class="filter-hero-name">{{ filtered_hero_name }}</span></p>
+                    {% endif %}
+                    <table class="items-table">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Matches</th>
+                                <th>Win Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in top_items %}
+                            <tr>
+                                <td class="item-name-cell">
+                                    {% if item.icon_url %}
+                                    <img src="{{ item.icon_url }}" alt="{{ item.name }}" class="item-icon">
+                                    {% endif %}
+                                    <span>{{ item.name }}</span>
+                                </td>
+                                <td class="item-matches">{{ item.matches }}</td>
+                                <td class="item-winrate">{{ item.win_rate }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
             </div>
             {% endif %}
 
