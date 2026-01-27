@@ -6,6 +6,10 @@
 
 A comprehensive web-based analytics platform for Deadlock game statistics. View detailed player performance metrics, match history, hero statistics, and interactive visualisations.
 
+<div align="center">
+  <img src="./static/img/data-demo.gif" alt="Deadlock Analytics Demo" width="100%">
+</div>
+
 ## Live Application
 
 🚀 **Try it now**: [https://deadlock-analytics-164941517977.europe-west2.run.app](https://deadlock-analytics-164941517977.europe-west2.run.app)
