@@ -4,6 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Player Analytics - {{ player_id }}</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="A comprehensive web-based analytics platform for Deadlock game statistics. View detailed player performance metrics, match history, hero statistics, and interactive visualisations.">
+
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="Player Analytics - {{ player_id }}">
+    <meta property="og:description" content="A comprehensive web-based analytics platform for Deadlock game statistics. View detailed player performance metrics, match history, hero statistics, and interactive visualisations.">
+    <meta property="og:image" content="https://deadlock-analytics-164941517977.europe-west2.run.app/static/img/yt_deadlock.png">
+    <meta property="og:url" content="https://deadlock-analytics-164941517977.europe-west2.run.app/analyze?player_id={{ player_id }}">
+    <meta property="og:type" content="website">
+
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Player Analytics - {{ player_id }}">
+    <meta name="twitter:description" content="A comprehensive web-based analytics platform for Deadlock game statistics. View detailed player performance metrics, match history, hero statistics, and interactive visualisations.">
+    <meta name="twitter:image" content="https://deadlock-analytics-164941517977.europe-west2.run.app/static/img/yt_deadlock.png">
+
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/results.css') }}">
 </head>
