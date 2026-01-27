@@ -51,6 +51,41 @@ body::before {
     border-radius: 4px;
 }
 
+.social-links {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    display: flex;
+    gap: 12px;
+    z-index: 10;
+}
+
+.social-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: rgba(27, 40, 56, 0.9);
+    border: 1px solid #66c0f4;
+    border-radius: 4px;
+    color: #66c0f4;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.social-link:hover {
+    background: rgba(102, 192, 244, 0.2);
+    box-shadow: 0 0 15px rgba(102, 192, 244, 0.5);
+    transform: translateY(-2px);
+}
+
+.social-link svg {
+    width: 22px;
+    height: 22px;
+}
+
 .page-wrapper {
     display: flex;
     flex-direction: row;
