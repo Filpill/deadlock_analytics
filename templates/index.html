@@ -4,297 +4,128 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Deadlock Analytics</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Motiva Sans', 'Arial', sans-serif;
-            background-image: url("{{ url_for('static', filename='img/catalog_tooltip_bg_modifies_vitality.webp') }}");
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-            color: #c7d5e0;
-            position: relative;
-        }
-
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(22, 32, 45, 0.85);
-            z-index: 0;
-        }
-
-        .container {
-            background: linear-gradient(to bottom, #2a475e 0%, #1b2838 100%);
-            border-radius: 4px;
-            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
-            padding: 60px 50px;
-            max-width: 600px;
-            width: 100%;
-            text-align: center;
-            border: 1px solid #3d4e5c;
-            position: relative;
-            z-index: 1;
-        }
-
-        h1 {
-            color: #66c0f4;
-            margin-bottom: 10px;
-            font-size: 2.8em;
-            font-weight: 300;
-            letter-spacing: 1px;
-            text-shadow: 0 0 20px rgba(102, 192, 244, 0.4);
-        }
-
-        .subtitle {
-            color: #8f98a0;
-            margin-bottom: 0px;
-            font-size: 1.1em;
-            font-weight: 300;
-        }
-
-        .form-group {
-            margin-bottom: 30px;
-        }
-
-        label {
-            display: block;
-            text-align: left;
-            margin-bottom: 12px;
-            color: #c7d5e0;
-            font-weight: 400;
-            font-size: 1em;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-size: 0.9em;
-        }
-
-        input[type="text"] {
-            width: 100%;
-            padding: 16px 20px;
-            background: #16202d;
-            border: 1px solid #3d4e5c;
-            border-radius: 3px;
-            font-size: 1.1em;
-            color: #c7d5e0;
-            transition: all 0.2s ease;
-            font-family: 'Motiva Sans', 'Arial', sans-serif;
-        }
-
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #66c0f4;
-            background: #1b2838;
-            box-shadow: 0 0 10px rgba(102, 192, 244, 0.2);
-        }
-
-        input[type="text"]::placeholder {
-            color: #5c7a8a;
-        }
-
-        button {
-            width: 100%;
-            padding: 16px 20px;
-            background: linear-gradient(to right, #47bfff 5%, #1a44c2 60%);
-            background-position: 25%;
-            background-size: 330% 100%;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            font-size: 1.1em;
-            font-weight: 400;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-family: 'Motiva Sans', 'Arial', sans-serif;
-            box-shadow: 0 0 15px rgba(102, 192, 244, 0.3);
-        }
-
-        button:hover {
-            background-position: 0%;
-            box-shadow: 0 0 25px rgba(102, 192, 244, 0.5);
-        }
-
-        button:active {
-            background-position: 0%;
-            box-shadow: 0 0 10px rgba(102, 192, 244, 0.7);
-        }
-
-        .error {
-            background: linear-gradient(to right, rgba(199, 48, 48, 0.2), rgba(199, 48, 48, 0.1));
-            border: 1px solid #c73030;
-            color: #ff6b6b;
-            padding: 15px;
-            border-radius: 3px;
-            margin-bottom: 25px;
-            text-align: left;
-        }
-
-        .info-box {
-            background: rgba(22, 32, 45, 0.6);
-            border: 1px solid #3d4e5c;
-            border-radius: 3px;
-            padding: 25px;
-            margin-top: 35px;
-            text-align: left;
-        }
-
-        .info-box h3 {
-            color: #66c0f4;
-            margin-bottom: 15px;
-            font-weight: 400;
-            font-size: 1.1em;
-            letter-spacing: 0.5px;
-        }
-
-        .info-box p {
-            color: #c7d5e0;
-            line-height: 1.8;
-            margin-bottom: 12px;
-            font-size: 0.95em;
-        }
-
-        .info-box ul {
-            padding-left: 25px;
-            color: #c7d5e0;
-            line-height: 1.8;
-        }
-
-        .info-box li {
-            margin-bottom: 8px;
-        }
-
-        .info-box code {
-            background: #1b2838;
-            border: 1px solid #3d4e5c;
-            padding: 3px 8px;
-            border-radius: 2px;
-            font-family: 'Courier New', monospace;
-            color: #66c0f4;
-            font-size: 0.95em;
-        }
-
-        .steam-badge {
-            display: inline-block;
-            background: linear-gradient(to right, rgba(102, 192, 244, 0.1), rgba(102, 192, 244, 0.05));
-            border: 1px solid rgba(102, 192, 244, 0.3);
-            padding: 4px 12px;
-            border-radius: 2px;
-            font-size: 0.75em;
-            color: #66c0f4;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 15px;
-            margin-bottom: 30px;
-        }
-
-        .loading-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(22, 32, 45, 0.95);
-            z-index: 9999;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-        }
-
-        .loading-overlay.active {
-            display: flex;
-        }
-
-        .spinner {
-            width: 60px;
-            height: 60px;
-            border: 4px solid #3d4e5c;
-            border-top: 4px solid #66c0f4;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            box-shadow: 0 0 20px rgba(102, 192, 244, 0.3);
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .loading-text {
-            margin-top: 25px;
-            color: #66c0f4;
-            font-size: 1.2em;
-            letter-spacing: 1px;
-            text-shadow: 0 0 10px rgba(102, 192, 244, 0.5);
-        }
-
-        .loading-subtext {
-            margin-top: 10px;
-            color: #8f98a0;
-            font-size: 0.9em;
-            letter-spacing: 0.5px;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
 </head>
 <body>
-    <div class="container">
-        <h1>Deadlock Analytics</h1>
-        <p class="subtitle">Advanced player statistics and performance analysis</p>
-        <div class="steam-badge">Powered by Deadlock API</div>
-
-        {% if error %}
-        <div class="error">
-            {{ error }}
+    <div class="banner-container">
+        <img src="{{ url_for('static', filename='img/custom-cityscape-banner-filip.jpg') }}" alt="Deadlock Cityscape" class="cityscape-banner">
+        <div class="social-links">
+            <a href="https://github.com/Filpill" target="_blank" rel="noopener noreferrer" class="social-link" title="GitHub">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+                </svg>
+            </a>
+            <a href="https://www.linkedin.com/in/filip-livancic/" target="_blank" rel="noopener noreferrer" class="social-link" title="LinkedIn">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path>
+                    <rect x="2" y="9" width="4" height="12"></rect>
+                    <circle cx="4" cy="4" r="2"></circle>
+                </svg>
+            </a>
         </div>
-        {% endif %}
+    </div>
+    <div class="page-wrapper">
+        <div class="container">
+            <h1>Search Player</h1>
+            <p class="subtitle">Advanced player statistics and performance analysis</p>
+            <div class="steam-badge">Powered by Deadlock API</div>
 
-        <form method="POST" action="/analyze" id="analyzeForm">
-            <div class="form-group">
-                <label for="player_id">Player ID (SteamID3 Format)</label>
-                <input type="text"
-                       id="player_id"
-                       name="player_id"
-                       placeholder="e.g., 199540209"
-                       required
-                       autocomplete="off">
+            {% if error %}
+            <div class="error">
+                {{ error }}
             </div>
+            {% endif %}
 
-            <button type="submit">Analyze Player Stats</button>
-        </form>
+            <form method="POST" action="/analyze" id="analyzeForm">
+                <div class="form-group">
+                    <label for="player_id">Player ID (SteamID3 Format)</label>
+                    <input type="text"
+                           id="player_id"
+                           name="player_id"
+                           placeholder="e.g., 199540209"
+                           required
+                           autocomplete="off">
+                </div>
 
-        <div class="info-box">
+                <button type="submit">Analyze Player Stats</button>
+            </form>
+
+            <div class="info-box">
             <h3>How to find your Player ID</h3>
             <p>Your Player ID is in SteamID3 format. You can find it by:</p>
             <ul>
                 <li>Checking your Steam profile URL</li>
                 <li>Using a SteamID converter tool</li>
-                <li>Looking at in-game profile information</li>
             </ul>
             <p style="margin-top: 15px;"><strong>Example:</strong> <code>199540209</code></p>
+            </div>
+        </div>
+
+        {% if rank_distribution %}
+        <div class="rank-distribution-container">
+            <h3>Player Rank Distribution (Last 30 Days)</h3>
+            <div id="rankDistributionChart"></div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Leaderboard Section -->
+    {% if leaderboard %}
+    <div class="leaderboard-section">
+        <h2 class="leaderboard-title">Global Top 40 Players</h2>
+        <div class="leaderboard-columns">
+            {% for col in range(4) %}
+            <div class="leaderboard-column">
+                {% for i in range(10) %}
+                {% set idx = col * 10 + i %}
+                {% if idx < leaderboard|length %}
+                {% set player = leaderboard[idx] %}
+                <div class="leaderboard-player" data-account-id="{{ player.account_id }}">
+                    <div class="player-rank">#{{ player.rank }}</div>
+                    <img src="{{ player.avatar_url }}"
+                         alt="Avatar"
+                         class="player-avatar"
+                         onerror="this.src='https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg'">
+                    <div class="player-info">
+                        <div class="player-username">{{ player.username }}</div>
+                        <div class="player-account-id">{{ player.account_id }}</div>
+                    </div>
+                    {% if player.performance_rank %}
+                    <div class="player-rank-text">{{ player.performance_rank }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endfor %}
         </div>
     </div>
+    {% endif %}
 
     <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner"></div>
         <div class="loading-text">Analyzing Player Data</div>
         <div class="loading-subtext">Fetching match history, statistics, and performance metrics...</div>
     </div>
+
+    <!-- Plotly for rank distribution chart -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <script>
+        // Render rank distribution chart if data is available
+        {% if rank_distribution %}
+        var rankDistChart = {{ rank_distribution | safe }};
+
+        // Apply Steam theme colors to the chart
+        rankDistChart.layout.paper_bgcolor = 'rgba(0, 0, 0, 0)';
+        rankDistChart.layout.plot_bgcolor = 'rgba(22, 32, 45, 0.4)';
+        rankDistChart.layout.font = { color: '#c7d5e0', family: 'Motiva Sans, Arial' };
+        rankDistChart.layout.xaxis.gridcolor = '#3d4e5c';
+        rankDistChart.layout.yaxis.gridcolor = '#3d4e5c';
+
+        Plotly.newPlot('rankDistributionChart', rankDistChart.data, rankDistChart.layout, {responsive: true});
+        {% endif %}
+    </script>
 
     <script>
         // Play UI sound when data is fetched
@@ -334,6 +165,23 @@
 
             // Submit the form manually after sound finishes
             e.target.submit();
+        });
+
+        // Add click handlers to leaderboard players
+        document.querySelectorAll('.leaderboard-player').forEach(function(playerDiv) {
+            playerDiv.addEventListener('click', async function() {
+                const accountId = this.getAttribute('data-account-id');
+                if (accountId && accountId !== 'N/A') {
+                    // Show loading overlay
+                    document.getElementById('loadingOverlay').classList.add('active');
+
+                    // Play UI sound
+                    await playDataFetchedSound();
+
+                    // Navigate to analyze page
+                    window.location.href = `/analyze?player_id=${accountId}`;
+                }
+            });
         });
     </script>
 </body>

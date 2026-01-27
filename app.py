@@ -27,10 +27,12 @@ def get_api_connection(player_id, hero_id=None):
                 "player_scoreboard": f"/v1/analytics/scoreboards/players?account_ids={player_id}&sort_by=matches{hero_param}",
                 "player_performance_curve": f"/v1/analytics/player-performance-curve?account_ids={player_id}&resolution=0{hero_param}",
                 "kill_death_stats": f"/v1/analytics/kill-death-stats?account_ids={player_id}{hero_param}",
-                "item_stats": f"/v1/analytics/item-stats?account_ids={player_id}&bucket=no_bucket{hero_param}",
+                "item_stats": f"/v1/analytics/item-stats?min_unix_timestamp=&min_matches=&account_ids={player_id}{hero_param}",
                 "steam_search": f"/v1/players/steam-search?search_query={player_id}",
                 # mmr_history: Don't filter (account-level stat, filtered client-side)
                 "mmr_history": f"/v1/players/{player_id}/mmr-history",
+                # hero_stats: Per-hero statistics (never filtered by hero_id)
+                "hero_stats": f"/v1/players/{player_id}/hero-stats",
             }
         },
         "assets-api": {
@@ -119,6 +121,9 @@ def create_visualizations(player_id, hero_id=None):
         kill_death_stats = get_request_data(connection, "data-api", "kill_death_stats")
         steam_profile = get_request_data(connection, "data-api", "steam_search")
         mmr_history = get_request_data(connection, "data-api", "mmr_history")
+        item_stats = get_request_data(connection, "data-api", "item_stats")
+        items_data = get_request_data(connection, "assets-api", "items")
+        hero_stats = get_request_data(connection, "data-api", "hero_stats")
 
         if not match_history:
             return None, None, "Failed to fetch match history from API"
@@ -131,7 +136,7 @@ def create_visualizations(player_id, hero_id=None):
             df_heroes = pd.json_normalize(hero_names)
             df_match_history = format_match_history(df_match_history, df_heroes)
         else:
-            print("Warning: Heroes endpoint returned error. Using hero IDs instead of names.")
+            # print("Warning: Heroes endpoint returned error. Using hero IDs instead of names.")
             # Add placeholder hero_name column using hero_id
             df_match_history['hero_name'] = df_match_history['hero_id'].astype(str)
             df_match_history['start_ts'] = pd.to_datetime(df_match_history['start_time'], unit='s')
@@ -157,30 +162,32 @@ def create_visualizations(player_id, hero_id=None):
             # Filter match history to selected hero
             df_match_history = df_match_history[df_match_history['hero_id'] == hero_id].copy()
 
-            print(f"Filtered to hero_id {hero_id} ({filtered_hero_name}): {len(df_match_history)} matches")
+            # print(f"Filtered to hero_id {hero_id} ({filtered_hero_name}): {len(df_match_history)} matches")
 
         df_player_performance_curve = pd.json_normalize(player_performance_curve) if player_performance_curve else pd.DataFrame()
         df_kill_death_stats = pd.json_normalize(kill_death_stats) if kill_death_stats else pd.DataFrame()
         df_player_stats = pd.json_normalize(player_stats) if player_stats else pd.DataFrame()
 
-        print(f"Analytics data received:")
-        print(f"  - Performance curve: {len(df_player_performance_curve)} rows")
-        print(f"  - Kill/Death stats: {len(df_kill_death_stats)} rows")
-        print(f"  - Player stats: {len(df_player_stats)} rows")
+        # print(f"Analytics data received:")
+        # print(f"  - Performance curve: {len(df_player_performance_curve)} rows")
+        # print(f"  - Kill/Death stats: {len(df_kill_death_stats)} rows")
+        # print(f"  - Player stats: {len(df_player_stats)} rows")
 
         if df_player_performance_curve.empty:
-            print("  WARNING: Performance curve data is EMPTY - chart will not display")
-            print(f"  Raw API response for performance curve: {player_performance_curve}")
+            pass
+            # print("  WARNING: Performance curve data is EMPTY - chart will not display")
+            # print(f"  Raw API response for performance curve: {player_performance_curve}")
 
         # Debug player stats when filtering
         if hero_id is not None and not df_player_stats.empty:
-            print(f"\nDEBUG: Player stats raw response sample:")
+            # print(f"\nDEBUG: Player stats raw response sample:")
             if isinstance(player_stats, dict):
-                print(f"  kills.avg: {player_stats.get('kills', {}).get('avg', 'N/A')}")
-                print(f"  deaths.avg: {player_stats.get('deaths', {}).get('avg', 'N/A')}")
-                print(f"  First 3 keys: {list(player_stats.keys())[:3]}")
-            print(f"  DataFrame kills.avg value: {df_player_stats['kills.avg'].iloc[0] if 'kills.avg' in df_player_stats.columns else 'Column not found'}")
-            print(f"  DataFrame kills.avg type: {type(df_player_stats['kills.avg'].iloc[0]) if 'kills.avg' in df_player_stats.columns else 'N/A'}")
+                pass
+                # print(f"  kills.avg: {player_stats.get('kills', {}).get('avg', 'N/A')}")
+                # print(f"  deaths.avg: {player_stats.get('deaths', {}).get('avg', 'N/A')}")
+                # print(f"  First 3 keys: {list(player_stats.keys())[:3]}")
+            # print(f"  DataFrame kills.avg value: {df_player_stats['kills.avg'].iloc[0] if 'kills.avg' in df_player_stats.columns else 'Column not found'}")
+            # print(f"  DataFrame kills.avg type: {type(df_player_stats['kills.avg'].iloc[0]) if 'kills.avg' in df_player_stats.columns else 'N/A'}")
 
         charts = {}
 
@@ -195,7 +202,7 @@ def create_visualizations(player_id, hero_id=None):
             fig1 = add_filter_subtitle(fig1, filtered_hero_name)
             charts['win_loss_timeline'] = json.dumps(fig1, cls=PlotlyJSONEncoder)
         else:
-            print("Win/Loss timeline chart NOT created - showing insufficient data message")
+            # print("Win/Loss timeline chart NOT created - showing insufficient data message")
             # Create placeholder chart with message
             fig1 = go.Figure()
             fig1.add_annotation(
@@ -217,8 +224,8 @@ def create_visualizations(player_id, hero_id=None):
 
         # Chart 2: Performance Curve with dropdown selector
         if not df_player_performance_curve.empty and 'game_time' in df_player_performance_curve.columns and len(df_player_performance_curve) > 0:
-            print(f"Performance Curve DataFrame shape: {df_player_performance_curve.shape}")
-            print(f"Performance Curve columns: {df_player_performance_curve.columns.tolist()}")
+            # print(f"Performance Curve DataFrame shape: {df_player_performance_curve.shape}")
+            # print(f"Performance Curve columns: {df_player_performance_curve.columns.tolist()}")
 
             # Convert game time from seconds to minutes
             df_player_performance_curve['game_time_min'] = df_player_performance_curve['game_time'] / 60
@@ -254,13 +261,13 @@ def create_visualizations(player_id, hero_id=None):
                     'yaxis_title': 'Average Assists'
                 })
 
-            print(f"Available metrics: {[m['name'] for m in metrics]}")
+            # print(f"Available metrics: {[m['name'] for m in metrics]}")
 
             # Create figure with traces for each metric
             fig3 = go.Figure()
 
             for i, metric in enumerate(metrics):
-                print(f"Adding trace {i}: {metric['name']}, visible={i == 0}")
+                # print(f"Adding trace {i}: {metric['name']}, visible={i == 0}")
                 visible_state = True if i == 0 else False
 
                 fig3.add_trace(go.Scatter(
@@ -292,7 +299,7 @@ def create_visualizations(player_id, hero_id=None):
                     ]
                 })
 
-            print(f"Created {len(dropdown_buttons)} dropdown buttons")
+            # print(f"Created {len(dropdown_buttons)} dropdown buttons")
 
             # Update layout with dropdown
             fig3.update_layout(
@@ -316,11 +323,11 @@ def create_visualizations(player_id, hero_id=None):
                 showlegend=False
             )
 
-            print(f"Performance curve chart created with {len(fig3.data)} traces")
+            # print(f"Performance curve chart created with {len(fig3.data)} traces")
             fig3 = add_filter_subtitle(fig3, filtered_hero_name)
             charts['performance_curve'] = json.dumps(fig3, cls=PlotlyJSONEncoder)
         else:
-            print("Performance curve chart NOT created - showing insufficient data message")
+            # print("Performance curve chart NOT created - showing insufficient data message")
             # Create placeholder chart with message
             fig3 = go.Figure()
             fig3.add_annotation(
@@ -342,15 +349,15 @@ def create_visualizations(player_id, hero_id=None):
 
         # Chart 4: Kill/Death Location Scatter Plot
         if not df_kill_death_stats.empty and 'position_x' in df_kill_death_stats.columns:
-            print(f"Kill/Death Stats DataFrame shape: {df_kill_death_stats.shape}")
-            print(f"Kills > 0 count: {(df_kill_death_stats['kills'] > 0).sum()}")
-            print(f"Deaths > 0 count: {(df_kill_death_stats['deaths'] > 0).sum()}")
+            # print(f"Kill/Death Stats DataFrame shape: {df_kill_death_stats.shape}")
+            # print(f"Kills > 0 count: {(df_kill_death_stats['kills'] > 0).sum()}")
+            # print(f"Deaths > 0 count: {(df_kill_death_stats['deaths'] > 0).sum()}")
 
             # Filter for kills and deaths
             df_kills = df_kill_death_stats[df_kill_death_stats['kills'] > 0].copy()
             df_deaths = df_kill_death_stats[df_kill_death_stats['deaths'] > 0].copy()
 
-            print(f"Creating chart with {len(df_kills)} kill locations and {len(df_deaths)} death locations")
+            # print(f"Creating chart with {len(df_kills)} kill locations and {len(df_deaths)} death locations")
 
             # Create scatter plot
             fig4 = go.Figure()
@@ -440,11 +447,11 @@ def create_visualizations(player_id, hero_id=None):
                 margin=dict(l=10, r=10, t=50, b=10)
             )
 
-            print(f"Chart created with {len(fig4.data)} traces")
+            # print(f"Chart created with {len(fig4.data)} traces")
             fig4 = add_filter_subtitle(fig4, filtered_hero_name)
             charts['kd_stats'] = json.dumps(fig4, cls=PlotlyJSONEncoder)
         else:
-            print("Kill/Death location chart NOT created - showing insufficient data message")
+            # print("Kill/Death location chart NOT created - showing insufficient data message")
             # Create placeholder chart with message
             fig4 = go.Figure()
             fig4.add_annotation(
@@ -467,7 +474,7 @@ def create_visualizations(player_id, hero_id=None):
 
         # Chart 4.5: Community Percentile Distribution
         if not df_player_stats.empty:
-            print(f"Player stats shape: {df_player_stats.shape}")
+            # print(f"Player stats shape: {df_player_stats.shape}")
 
             # Define available metrics for distribution
             metrics = []
@@ -500,14 +507,14 @@ def create_visualizations(player_id, hero_id=None):
                 ('deaths_to_neutrals', 'Deaths to Neutrals'),
             ]
 
-            print(f"Checking {len(metric_configs)} metrics for distribution chart")
+            # print(f"Checking {len(metric_configs)} metrics for distribution chart")
             for metric_key, metric_name in metric_configs:
                 # Check if we have percentile data to construct community distribution
                 if f'{metric_key}.percentile50' in df_player_stats.columns and f'{metric_key}.avg' in df_player_stats.columns:
                     # Check if avg is valid
                     avg_val = df_player_stats[f'{metric_key}.avg'].iloc[0]
                     if avg_val is None or pd.isna(avg_val):
-                        print(f"Skipping {metric_key}: avg is None/NaN")
+                        # print(f"Skipping {metric_key}: avg is None/NaN")
                         continue
 
                     # Only include metrics with reasonable percentile spread
@@ -529,14 +536,16 @@ def create_visualizations(player_id, hero_id=None):
                             'name': metric_name
                         })
                         try:
-                            print(f"✓ Including metric {metric_key}: avg={float(avg_val):.2f}, p25={p25:.2f}, p75={p75:.2f}, spread={p75-p25:.2f}")
+                            pass
+                            # print(f"✓ Including metric {metric_key}: avg={float(avg_val):.2f}, p25={p25:.2f}, p75={p75:.2f}, spread={p75-p25:.2f}")
                         except:
-                            print(f"✓ Including metric {metric_key}")
+                            pass
+                            # print(f"✓ Including metric {metric_key}")
                     else:
                         spread = (p75 - p25) if (p25 is not None and p75 is not None) else None
-                        print(f"✗ Skipping {metric_key}: p25={p25}, p75={p75}, spread={spread}")
+                        # print(f"✗ Skipping {metric_key}: p25={p25}, p75={p75}, spread={spread}")
 
-            print(f"Total valid metrics for distribution chart: {len(metrics)}")
+            # print(f"Total valid metrics for distribution chart: {len(metrics)}")
 
             # Check if we have at least one metric with actual variance (non-degenerate distribution)
             has_valid_distribution = False
@@ -553,11 +562,11 @@ def create_visualizations(player_id, hero_id=None):
                         break
 
             if not has_valid_distribution:
-                print(f"WARNING: All metrics have degenerate distributions (no variance).")
+                # print(f"WARNING: All metrics have degenerate distributions (no variance).")
                 metrics = []  # Clear metrics to skip chart generation
 
             if len(metrics) == 0:
-                print(f"No valid metrics found for distribution chart - showing insufficient data message")
+                # print(f"No valid metrics found for distribution chart - showing insufficient data message")
                 # Create placeholder chart with message
                 fig4_5 = go.Figure()
                 fig4_5.add_annotation(
@@ -626,9 +635,70 @@ def create_visualizations(player_id, hero_id=None):
                     y_max = float(np.max(y_range))
 
                     # Print all percentile values for verification
-                    print(f"\n{metric_key}:")
-                    print(f"  Player avg: {player_avg:.2f}")
-                    print(f"  Community percentiles (from API): {percentiles}")
+                    # print(f"\n{metric_key}:")
+                    # print(f"  Player avg: {player_avg:.2f}")
+                    # print(f"  Community percentiles (from API): {percentiles}")
+
+                    # Calculate player's percentile rank by interpolation
+                    player_percentile = 50  # Default to median
+                    if percentiles and player_avg > 0:
+                        sorted_percentiles = sorted(percentiles.items())
+
+                        # Find where player falls in percentile range
+                        if player_avg <= sorted_percentiles[0][1]:
+                            # Below P1
+                            player_percentile = 1
+                        elif player_avg >= sorted_percentiles[-1][1]:
+                            # Above P99
+                            player_percentile = 99
+                        else:
+                            # Interpolate between percentiles
+                            for j in range(len(sorted_percentiles) - 1):
+                                p1, val1 = sorted_percentiles[j]
+                                p2, val2 = sorted_percentiles[j + 1]
+
+                                if val1 <= player_avg <= val2:
+                                    # Linear interpolation
+                                    if val2 != val1:
+                                        player_percentile = p1 + (p2 - p1) * (player_avg - val1) / (val2 - val1)
+                                    else:
+                                        player_percentile = (p1 + p2) / 2
+                                    break
+
+                    # Store percentile rank in metric for annotation
+                    metric['player_percentile'] = player_percentile
+
+                    # Create annotation text
+                    if player_percentile >= 50:
+                        # Top X% (e.g., 75th percentile = Top 25%)
+                        top_pct = 100 - player_percentile
+                        metric['rank_text'] = f"Top {top_pct:.1f}%"
+                    else:
+                        # Bottom X% (e.g., 25th percentile = Bottom 25%)
+                        metric['rank_text'] = f"Bottom {player_percentile:.1f}%"
+
+                    # Calculate color based on percentile
+                    # Green for above average (50-100), Red for below average (0-50)
+                    if player_percentile >= 50:
+                        # Above average: interpolate from yellow (50th) to bright green (100th)
+                        # 50th percentile = #cccc00 (yellow)
+                        # 100th percentile = #22ff22 (bright green)
+                        ratio = (player_percentile - 50) / 50  # 0 to 1
+                        r = int(0xcc - (0xcc - 0x22) * ratio)
+                        g = int(0xcc + (0xff - 0xcc) * ratio)
+                        b = int(0x00 + (0x22 - 0x00) * ratio)
+                        metric['rank_color'] = f'#{r:02x}{g:02x}{b:02x}'
+                    else:
+                        # Below average: interpolate from bright red (0th) to yellow (50th)
+                        # 0th percentile = #ff0000 (bright red)
+                        # 50th percentile = #cccc00 (yellow)
+                        ratio = player_percentile / 50  # 0 to 1
+                        r = int(0xff - (0xff - 0xcc) * ratio)
+                        g = int(0x00 + (0xcc - 0x00) * ratio)
+                        b = 0x00
+                        metric['rank_color'] = f'#{r:02x}{g:02x}{b:02x}'
+
+                    # print(f"  Player percentile: {player_percentile:.1f} ({metric['rank_text']}, color: {metric['rank_color']})")
 
                     # Add distribution curve (community)
                     fig4_5.add_trace(go.Scatter(
@@ -710,7 +780,10 @@ def create_visualizations(player_id, hero_id=None):
                             {
                                 'xaxis.title.text': metric['name'],
                                 'yaxis.title.text': 'Probability Density',
-                                'title.text': f"{metric['name']} Compared To Community Distribution"
+                                'title.text': f"{metric['name']} Compared To Community Distribution",
+                                'annotations[0].text': metric['rank_text'],
+                                'annotations[0].font.color': metric['rank_color'],
+                                'annotations[0].bordercolor': metric['rank_color']
                             }
                         ]
                     })
@@ -754,17 +827,34 @@ def create_visualizations(player_id, hero_id=None):
                         bordercolor='#3d4e5c',
                         borderwidth=1
                     ),
+                    annotations=[
+                        dict(
+                            text=metrics[0]['rank_text'],
+                            xref='paper',
+                            yref='paper',
+                            x=0.98,
+                            y=0.98,
+                            xanchor='right',
+                            yanchor='top',
+                            showarrow=False,
+                            font=dict(size=16, color=metrics[0]['rank_color'], family='Motiva Sans, Arial'),
+                            bgcolor='rgba(27, 40, 56, 0.9)',
+                            bordercolor=metrics[0]['rank_color'],
+                            borderwidth=2,
+                            borderpad=10
+                        )
+                    ],
                     height=600
                 )
 
-                print(f"Distribution chart created with {len(fig4_5.data)} traces")
+                # print(f"Distribution chart created with {len(fig4_5.data)} traces")
                 fig4_5 = add_filter_subtitle(fig4_5, filtered_hero_name)
                 charts['percentile_dist'] = json.dumps(fig4_5, cls=PlotlyJSONEncoder)
 
         # Chart 5: Match Statistics Over Time with Weekly Rolling Average
         if not df_match_history.empty:
-            print(f"Match history columns: {df_match_history.columns.tolist()}")
-            print(f"Match history shape: {df_match_history.shape}")
+            # print(f"Match history columns: {df_match_history.columns.tolist()}")
+            # print(f"Match history shape: {df_match_history.shape}")
 
             # Sort by timestamp to get chronological order (oldest to newest)
             df_match_sorted = df_match_history.sort_values('start_ts').copy()
@@ -781,7 +871,7 @@ def create_visualizations(player_id, hero_id=None):
             # Reset index to get timestamp back as a column
             df_match_sorted = df_match_sorted.reset_index()
 
-            print(f"Rolling average calculated for {len(df_match_sorted)} matches")
+            # print(f"Rolling average calculated for {len(df_match_sorted)} matches")
 
             fig6 = go.Figure()
 
@@ -854,13 +944,14 @@ def create_visualizations(player_id, hero_id=None):
                 )
             )
 
-            print(f"KDA trend chart created with {len(fig6.data)} traces")
+            # print(f"KDA trend chart created with {len(fig6.data)} traces")
             if len(fig6.data) > 0:
-                print(f"First trace has {len(fig6.data[0].x)} data points")
+                pass
+                # print(f"First trace has {len(fig6.data[0].x)} data points")
             fig6 = add_filter_subtitle(fig6, filtered_hero_name)
             charts['kda_trend'] = json.dumps(fig6, cls=PlotlyJSONEncoder)
         else:
-            print("KDA trend chart NOT created - showing insufficient data message")
+            # print("KDA trend chart NOT created - showing insufficient data message")
             # Create placeholder chart with message
             fig6 = go.Figure()
             fig6.add_annotation(
@@ -880,26 +971,74 @@ def create_visualizations(player_id, hero_id=None):
             fig6 = add_filter_subtitle(fig6, filtered_hero_name)
             charts['kda_trend'] = json.dumps(fig6, cls=PlotlyJSONEncoder)
 
-        # Chart 6: MMR History
-        if mmr_history and len(mmr_history) > 0:
-            print(f"MMR history records: {len(mmr_history)}")
+        # Chart 6: Rank Progression Over Time
+        if mmr_history and len(mmr_history) > 0 and ranks_data:
+            # print(f"Rank history records: {len(mmr_history)}")
 
             df_mmr = pd.json_normalize(mmr_history)
             df_mmr['start_ts'] = pd.to_datetime(df_mmr['start_time'], unit='s')
             df_mmr = df_mmr.sort_values('start_ts')
 
+            # Create rank name mapping from ranks_data
+            rank_mapping = {}
+            rank_badge_mapping = {}
+
+            # print(f"Sample rank data structure: {ranks_data[0] if ranks_data else 'None'}")
+
+            for rank in ranks_data:
+                tier = rank.get('tier')
+                rank_name = rank.get('name', f'Rank {tier}')
+                rank_mapping[tier] = rank_name
+
+                # Get images - check if it's a dict or needs normalization
+                images = rank.get('images', {})
+                # print(f"Tier {tier} ({rank_name}) images keys: {images.keys() if isinstance(images, dict) else 'not a dict'}")
+
+                # Look for 'lg_webp' or webp versions of large badge image (matching index page pattern)
+                badge_url = ''
+                if isinstance(images, dict):
+                    # Prefer webp, then fallback to png
+                    for key in ['lg_webp', 'large_webp', 'badge_lg_webp', 'lg', 'large', 'badge_lg']:
+                        if key in images and images[key]:
+                            badge_url = images[key]
+                            break
+
+                rank_badge_mapping[tier] = badge_url
+                # print(f"Tier {tier} badge URL: {badge_url}")
+
+            # print(f"Rank mapping: {rank_mapping}")
+
+            # Add rank names to dataframe
+            df_mmr['rank_name'] = df_mmr['division'].map(rank_mapping)
+            df_mmr['rank_badge'] = df_mmr['division'].map(rank_badge_mapping)
+
+            # Create precise rank value: division + (division_tier / 10)
+            # This gives us 1.1, 1.2, 1.3 ... 1.6 for Initiate tiers 1-6
+            df_mmr['precise_rank'] = df_mmr.apply(
+                lambda row: row['division'] + (row.get('division_tier', 0) / 10.0) if pd.notna(row.get('division_tier')) else row['division'],
+                axis=1
+            )
+
+            # print(f"Precise rank range: {df_mmr['precise_rank'].min():.2f} - {df_mmr['precise_rank'].max():.2f}")
+            # print(f"Player score (MMR) range: {df_mmr['player_score'].min()} - {df_mmr['player_score'].max()}")
+
             # Set timestamp as index for rolling window
             df_mmr = df_mmr.set_index('start_ts')
 
-            # Calculate 7-day rolling average
+            # Calculate 7-day rolling average for player_score (MMR)
             window = '7D'
             df_mmr['mmr_avg'] = df_mmr['player_score'].rolling(window=window, min_periods=1).mean()
-            df_mmr['rank_avg'] = df_mmr['rank'].rolling(window=window, min_periods=1).mean()
 
             # Reset index
             df_mmr = df_mmr.reset_index()
 
-            print(f"MMR range: {df_mmr['player_score'].min():.2f} - {df_mmr['player_score'].max():.2f}")
+            # Create combined rank label with division_tier
+            df_mmr['full_rank'] = df_mmr.apply(
+                lambda row: f"{row['rank_name']}" + (f" {row['division_tier']}" if pd.notna(row.get('division_tier')) and row.get('division_tier', 0) > 0 else ""),
+                axis=1
+            )
+
+            # print(f"Division range: {df_mmr['division'].min()} - {df_mmr['division'].max()}")
 
             fig7 = go.Figure()
 
@@ -909,46 +1048,90 @@ def create_visualizations(player_id, hero_id=None):
                 y=df_mmr['mmr_avg'].tolist(),
                 mode='lines',
                 name='MMR (7-day avg)',
-                line=dict(color='#f59e0b', width=3),
-                hovertemplate='<b>MMR (7-day avg): %{y:.2f}</b><br>Date: %{x}<extra></extra>'
+                line=dict(color='#66c0f4', width=3),
+                hovertemplate='<b>MMR (7-day avg): %{y:.0f}</b><br>Date: %{x}<extra></extra>'
             ))
 
-            # Add raw MMR points (faint)
+            # Add raw MMR points (faint markers) - using player_score
             fig7.add_trace(go.Scatter(
                 x=df_mmr['start_ts'].tolist(),
                 y=df_mmr['player_score'].tolist(),
                 mode='markers',
                 name='MMR (per match)',
-                marker=dict(size=4, color='#f59e0b', opacity=0.3),
-                showlegend=False,
-                hoverinfo='skip'
+                marker=dict(size=4, color='#66c0f4', opacity=0.3),
+                customdata=df_mmr[['full_rank', 'player_score']].values.tolist(),
+                hovertemplate='<b>%{customdata[0]}</b><br>MMR: %{customdata[1]:.0f}<br>Date: %{x}<extra></extra>',
+                showlegend=False
             ))
 
-            # Add rank information as secondary trace (optional)
-            fig7.add_trace(go.Scatter(
-                x=df_mmr['start_ts'].tolist(),
-                y=df_mmr['rank_avg'].tolist(),
-                mode='lines',
-                name='Rank (7-day avg)',
-                line=dict(color='#8b5cf6', width=2),
-                yaxis='y2',
-                hovertemplate='<b>Rank (7-day avg): %{y:.1f}</b><br>Date: %{x}<extra></extra>',
-                visible='legendonly'  # Hidden by default
-            ))
+            # Calculate average MMR for each division to position badges
+            division_mmr_mapping = {}
+            unique_divisions = sorted(df_mmr['division'].unique())
+
+            for division in unique_divisions:
+                # Get average MMR for this division
+                division_data = df_mmr[df_mmr['division'] == division]
+                avg_mmr = division_data['player_score'].mean()
+                division_mmr_mapping[division] = avg_mmr
+                # print(f"Division {division} ({rank_mapping.get(division)}): Avg MMR = {avg_mmr:.0f}")
+
+            # Build rank badge images for y-axis using layout.images
+            images = []
+
+            # print(f"Building rank badges for {len(unique_divisions)} divisions")
+
+            for division in unique_divisions:
+                badge_url = rank_badge_mapping.get(division)
+                rank_name = rank_mapping.get(division, f'Rank {division}')
+                mmr_position = division_mmr_mapping.get(division, 0)
+
+                # print(f"Division {division}: {rank_name}, Badge URL: {badge_url}, MMR position: {mmr_position:.0f}")
+
+                if badge_url and mmr_position > 0:
+                    # Add badge image positioned at average MMR for this division
+                    images.append(dict(
+                        source=badge_url,
+                        xref="paper",
+                        yref="y",
+                        x=-0.01,  # Moved inward (was -0.03)
+                        y=mmr_position,  # Position at average MMR for this division
+                        sizex=0.05,  # Same size as sm badges
+                        sizey=200,  # Same size as sm badges
+                        xanchor="right",
+                        yanchor="middle",
+                        layer="above"
+                    ))
+                else:
+                    pass
+                    # print(f"WARNING: No badge URL or MMR position for division {division}")
+
+            # print(f"Created {len(images)} badge images")
+            if images:
+                pass
+                # print(f"First badge: {images[0]}")
+
+            # Y-axis range should accommodate player_score (MMR) values
+            y_min = df_mmr['player_score'].min()
+            y_max = df_mmr['player_score'].max()
+
+            # Add padding to y-axis range (10% below min, 10% above max)
+            y_padding = (y_max - y_min) * 0.1 if (y_max > y_min) else 50
+            y_range_min = max(0, y_min - y_padding)  # Don't go below 0
+            y_range_max = y_max + y_padding
 
             fig7.update_layout(
-                title='MMR History',
+                title='MMR Progression Over Time (7-Day Rolling Average)',
                 xaxis_title='Date',
                 yaxis=dict(
-                    title=dict(text='MMR (Player Score)', font=dict(color='#f59e0b')),
-                    tickfont=dict(color='#f59e0b')
+                    title=dict(
+                        text='MMR (Player Score)',
+                        standoff=35  # Push label further from axis
+                    ),
+                    gridcolor='#3d4e5c',
+                    tickfont=dict(size=10, color='#c7d5e0'),
+                    range=[y_range_min, y_range_max]  # Add padding to range
                 ),
-                yaxis2=dict(
-                    title=dict(text='Rank', font=dict(color='#8b5cf6')),
-                    tickfont=dict(color='#8b5cf6'),
-                    overlaying='y',
-                    side='right'
-                ),
+                images=images if images else [],
                 hovermode='x unified',
                 showlegend=True,
                 legend=dict(
@@ -958,11 +1141,251 @@ def create_visualizations(player_id, hero_id=None):
                     xanchor='right',
                     x=1
                 ),
-                height=500
+                height=500,
+                margin=dict(l=160)  # Increased left margin (was 140)
             )
 
-            print(f"MMR chart created with {len(fig7.data)} traces")
+            # print(f"MMR progression chart created with {len(unique_divisions)} rank tiers and {len(images)} badge images")
+            # print(f"First badge image config: {images[0] if images else 'None'}")
             charts['mmr_history'] = json.dumps(fig7, cls=PlotlyJSONEncoder)
+
+        # Chart 8: Hero Statistics Heatmap
+        if hero_stats and len(hero_stats) > 0 and hero_names:
+            # print(f"Hero stats records: {len(hero_stats)}")
+
+            # Convert to DataFrame
+            df_hero_stats = pd.json_normalize(hero_stats)
+            # print(f"Hero stats columns: {df_hero_stats.columns.tolist()}")
+
+            # Merge with hero names and icons
+            df_hero_stats = pd.merge(
+                df_hero_stats,
+                df_heroes[['id', 'name', 'images.icon_hero_card']],
+                left_on='hero_id',
+                right_on='id',
+                how='left'
+            )
+
+            # Sort by matches played (descending) - default sort
+            df_hero_stats = df_hero_stats.sort_values('matches_played', ascending=False)
+
+            # Filter to only heroes with matches > 0
+            df_hero_stats = df_hero_stats[df_hero_stats['matches_played'] > 0]
+
+            # Calculate win rate and convert percentage metrics
+            df_hero_stats['win_rate'] = (df_hero_stats['wins'] / df_hero_stats['matches_played'] * 100).round(2)
+            if 'accuracy' in df_hero_stats.columns:
+                df_hero_stats['accuracy'] = (df_hero_stats['accuracy'] * 100).round(2)
+            if 'crit_shot_rate' in df_hero_stats.columns:
+                df_hero_stats['crit_shot_rate'] = (df_hero_stats['crit_shot_rate'] * 100).round(2)
+
+            # Select metrics: any column ending with per_match, per_min, per_soul, plus win_rate, accuracy, crit_shot_rate
+            metric_columns = []
+            for col in df_hero_stats.columns:
+                if col.endswith('_per_match') or col.endswith('_per_min') or col.endswith('_per_soul'):
+                    metric_columns.append(col)
+
+            # Add specific metrics
+            for col in ['win_rate', 'accuracy', 'crit_shot_rate']:
+                if col in df_hero_stats.columns:
+                    metric_columns.append(col)
+
+            # Sort metrics alphabetically
+            metric_columns.sort()
+
+            # print(f"Selected metrics: {metric_columns}")
+
+            # Calculate averages for each metric across all heroes
+            metric_avgs = {}
+            for col in metric_columns + ['win_rate']:
+                if col in df_hero_stats.columns:
+                    metric_avgs[col] = df_hero_stats[col].mean()
+
+            # print(f"Metric averages: {metric_avgs}")
+
+            # Prepare data for heatmap
+            hero_names_list = df_hero_stats['name'].tolist()
+            hero_icons = df_hero_stats['images.icon_hero_card'].tolist()
+            hero_matches_played = df_hero_stats['matches_played'].tolist()
+
+            # Create heatmap data matrix
+            heatmap_data = []
+            heatmap_text = []  # For hover text
+            metric_labels = []
+
+            # Custom label mapping for better readability
+            label_mapping = {
+                'kills_per_min': 'Kills/Min',
+                'deaths_per_min': 'Deaths/Min',
+                'assists_per_min': 'Assists/Min',
+                'denies_per_min': 'Denies/Min',
+                'denies_per_match': 'Denies/Match',
+                'networth_per_min': 'Souls/Min',
+                'last_hits_per_min': 'Last Hits/Min',
+                'damage_per_min': 'Dmg/Min',
+                'damage_per_soul': 'Dmg/Soul',
+                'damage_taken_per_soul': 'Dmg Taken/Soul',
+                'creeps_per_min': 'Creeps/Min',
+                'obj_damage_per_min': 'Obj Dmg/Min',
+                'obj_damage_per_soul': 'Obj Dmg/Soul',
+                'win_rate': 'Win Rate %',
+                'accuracy': 'Accuracy %',
+                'crit_shot_rate': 'Crit Rate %'
+            }
+
+            for col in metric_columns:
+                if col in df_hero_stats.columns:
+                    values = df_hero_stats[col].tolist()
+                    heatmap_data.append(values)
+
+                    # Create hover text
+                    hover_values = [f"{val:.2f}" for val in values]
+                    heatmap_text.append(hover_values)
+
+                    # Use custom label or fallback to formatted column name
+                    label = label_mapping.get(col, col.replace('_', ' ').title())
+                    metric_labels.append(label)
+
+            # Transpose data (metrics on x-axis, heroes on y-axis)
+            heatmap_data = list(map(list, zip(*heatmap_data)))
+            heatmap_text = list(map(list, zip(*heatmap_text)))
+
+            # Create custom colorscale: blue (below avg) -> white (avg) -> red (above avg)
+            # Normalize data relative to averages for colorscale
+            normalized_data = []
+            for i, hero_row in enumerate(heatmap_data):
+                normalized_row = []
+                for j, value in enumerate(hero_row):
+                    metric_col = metric_columns[j] if j < len(metric_columns) else None
+                    if metric_col and metric_col in metric_avgs:
+                        avg = metric_avgs[metric_col]
+                        if avg > 0:
+                            # Normalize: -1 (half of avg) to +1 (double of avg)
+                            normalized = (value - avg) / avg
+                            normalized = max(-1, min(1, normalized))  # Clamp to [-1, 1]
+                        else:
+                            normalized = 0
+                    else:
+                        normalized = 0
+                    normalized_row.append(normalized)
+                normalized_data.append(normalized_row)
+
+            fig8 = go.Figure(data=go.Heatmap(
+                z=normalized_data,
+                x=metric_labels,
+                y=hero_names_list,
+                text=heatmap_text,
+                texttemplate='%{text}',
+                textfont={"size": 11, "color": "#1b2838"},  # Darker text for visibility
+                customdata=[[matches] for matches in hero_matches_played],  # Store matches for filtering
+                colorscale=[
+                    [0.0, '#4a9eff'],    # Blue (below average)
+                    [0.5, '#ffffff'],    # White (average)
+                    [1.0, '#ff4a4a']     # Red (above average)
+                ],
+                zmid=0,  # Center colorscale at 0 (average)
+                colorbar=dict(
+                    title="vs Avg",
+                    tickvals=[-1, 0, 1],
+                    ticktext=['Below', 'Avg', 'Above']
+                ),
+                hovertemplate='<b>%{y}</b><br>%{x}: %{text}<extra></extra>'
+            ))
+
+            # Add hero icons on y-axis
+            images = []
+            for i, (hero_name, icon_url) in enumerate(zip(hero_names_list, hero_icons)):
+                if icon_url:
+                    images.append(dict(
+                        source=icon_url,
+                        xref="paper",
+                        yref="y",
+                        x=-0.015,  # Positioned outside the plot area
+                        y=i,
+                        sizex=0.04,  # Increased from 0.025
+                        sizey=0.9,   # Increased from 0.8
+                        xanchor="right",
+                        yanchor="middle",
+                        layer="above"
+                    ))
+
+            # Create filter buttons for minimum matches
+            filter_buttons = []
+            thresholds = [0, 5, 10, 25, 50, 100, 200]
+
+            for threshold in thresholds:
+                label = f"All Heroes" if threshold == 0 else f"≥{threshold} Matches"
+                filter_buttons.append(dict(
+                    label=label,
+                    method='skip',  # We'll handle filtering in JavaScript
+                    args=[threshold]
+                ))
+
+            # Create annotations for matches played next to hero icons
+            annotations = []
+            for i, (hero_name, matches) in enumerate(zip(hero_names_list, hero_matches_played)):
+                annotations.append(dict(
+                    text=f"({matches})",
+                    xref="paper",
+                    yref="y",
+                    x=-0.045,  # Position to the right of hero icon
+                    y=i,
+                    xanchor="right",
+                    yanchor="middle",
+                    showarrow=False,
+                    font=dict(size=10, color='#c7d5e0')
+                ))
+
+            # Add filter label annotation
+            annotations.append(dict(
+                text="Minimum games played:",
+                xref="paper",
+                yref="paper",
+                x=0.87,
+                y=1.08,
+                xanchor="right",
+                yanchor="top",
+                showarrow=False,
+                font=dict(size=12, color='#c7d5e0')
+            ))
+
+            fig8.update_layout(
+                title='Hero Performance Heatmap (Click metric to sort)',
+                xaxis=dict(
+                    title='Metrics (Click to Sort)',
+                    side='bottom'
+                ),
+                yaxis=dict(
+                    title='',
+                    tickmode='array',
+                    tickvals=list(range(len(hero_names_list))),
+                    ticktext=[''] * len(hero_names_list),  # Hide tick labels (icons replace them)
+                    autorange='reversed',  # Most played at top
+                    side='left'
+                ),
+                updatemenus=[
+                    dict(
+                        type='dropdown',
+                        direction='down',
+                        x=1.0,
+                        xanchor='right',
+                        y=1.08,
+                        yanchor='top',
+                        showactive=True,
+                        buttons=filter_buttons,
+                        bgcolor='rgba(27, 40, 56, 0.9)',
+                        bordercolor='#3d4e5c',
+                        font=dict(color='#c7d5e0', size=11)
+                    )
+                ],
+                annotations=annotations,
+                images=images,
+                height=max(800, len(hero_names_list) * 40),  # Increased from 30 to 40 per hero, min from 600 to 800
+                margin=dict(l=80, r=100, t=100, b=80)  # Adjusted top margin
+            )
+
+            # print(f"Hero heatmap created with {len(hero_names_list)} heroes and {len(metric_labels)} metrics")
+            charts['hero_heatmap'] = json.dumps(fig8, cls=PlotlyJSONEncoder)
 
         # Player Stats Summary (calculated from match history)
         summary = {}
@@ -984,7 +1407,7 @@ def create_visualizations(player_id, hero_id=None):
 
         # Calculate top 5 heroes by games played (use unfiltered data)
         top_heroes = []
-        print(f"Top heroes check: df_match_history_unfiltered empty={df_match_history_unfiltered.empty}, hero_names={bool(hero_names)}, has hero_name={'hero_name' in df_match_history_unfiltered.columns if not df_match_history_unfiltered.empty else 'N/A'}")
+        # print(f"Top heroes check: df_match_history_unfiltered empty={df_match_history_unfiltered.empty}, hero_names={bool(hero_names)}, has hero_name={'hero_name' in df_match_history_unfiltered.columns if not df_match_history_unfiltered.empty else 'N/A'}")
 
         if not df_match_history_unfiltered.empty and hero_names and 'hero_name' in df_match_history_unfiltered.columns:
             # Group by hero_name and calculate stats (using unfiltered data)
@@ -1012,20 +1435,22 @@ def create_visualizations(player_id, hero_id=None):
                 if not hero_info.empty:
                     hero_row = hero_info.iloc[0]
                     hero_id_value = int(hero_row['id'])  # Store hero_id
-                    print(f"Hero {hero_name} has ID: {hero_id_value}")
+                    # print(f"Hero {hero_name} has ID: {hero_id_value}")
 
                     # Access flattened image columns (json_normalize creates 'images.key_name' columns)
                     # Try different image types in order of preference
                     for img_key in ['images.icon_hero_card', 'images.icon_image_small', 'images.minimap_image', 'images.selection_image']:
                         if img_key in hero_row.index and pd.notna(hero_row[img_key]) and hero_row[img_key]:
                             icon_url = hero_row[img_key]
-                            print(f"Found icon for {hero_name}: {img_key}")
+                            # print(f"Found icon for {hero_name}: {img_key}")
                             break
                 else:
-                    print(f"WARNING: Hero {hero_name} not found in heroes endpoint!")
+                    pass
+                    # print(f"WARNING: Hero {hero_name} not found in heroes endpoint!")
 
                 if not icon_url:
-                    print(f"No icon found for {hero_name}")
+                    pass
+                    # print(f"No icon found for {hero_name}")
 
                 if hero_id_value is not None:
                     top_heroes.append({
@@ -1036,9 +1461,118 @@ def create_visualizations(player_id, hero_id=None):
                         'icon_url': icon_url
                     })
                 else:
-                    print(f"Skipping {hero_name} - no hero_id found")
+                    pass
+                    # print(f"Skipping {hero_name} - no hero_id found")
 
-            print(f"Top 5 heroes calculated: {[h['name'] for h in top_heroes]}")
+            # print(f"Top 5 heroes calculated: {[h['name'] for h in top_heroes]}")
+
+        # Get ALL matches with all metrics for pagination
+        recent_matches = []
+        if not df_match_history.empty and hero_names:
+            # Sort by start time (most recent first) - get ALL matches
+            df_recent = df_match_history.sort_values('start_time', ascending=False)
+
+            # Create heroes DataFrame for lookup if not already created
+            if 'df_heroes' not in locals():
+                df_heroes = pd.json_normalize(hero_names) if hero_names else pd.DataFrame()
+
+            for idx, match in df_recent.iterrows():
+                # Get hero icon
+                hero_name = match['hero_name'] if 'hero_name' in match.index else 'Unknown'
+                hero_info = df_heroes[df_heroes['name'] == hero_name] if not df_heroes.empty else pd.DataFrame()
+                icon_url = None
+
+                if not hero_info.empty:
+                    hero_row = hero_info.iloc[0]
+                    # Try to get small icon
+                    for img_key in ['images.icon_image_small', 'images.icon_hero_card', 'images.minimap_image']:
+                        if img_key in hero_row.index and pd.notna(hero_row[img_key]) and hero_row[img_key]:
+                            icon_url = hero_row[img_key]
+                            break
+
+                # Format match data using correct column names
+                recent_matches.append({
+                    'match_id': int(match['match_id']) if 'match_id' in match.index else 0,
+                    'start_time': int(match['start_time']) if 'start_time' in match.index else 0,
+                    'hero_name': hero_name,
+                    'hero_icon': icon_url,
+                    'result': match['result'] if 'result' in match.index else 'Unknown',
+                    'kills': int(match['player_kills']) if 'player_kills' in match.index else 0,
+                    'deaths': int(match['player_deaths']) if 'player_deaths' in match.index else 0,
+                    'assists': int(match['player_assists']) if 'player_assists' in match.index else 0,
+                    'net_worth': int(match['net_worth']) if 'net_worth' in match.index else 0,
+                    'last_hits': int(match['last_hits']) if 'last_hits' in match.index else 0,
+                    'denies': int(match['denies']) if 'denies' in match.index else 0,
+                    'duration_s': int(match['match_duration_s']) if 'match_duration_s' in match.index else 0
+                })
+
+            # print(f"Recent matches prepared: {len(recent_matches)} matches")
+
+        # Calculate top 10 items by matches played
+        top_items = []
+        # print(f"Top items check: item_stats={bool(item_stats)}, items_data={bool(items_data)}")
+
+        if item_stats and items_data:
+            # Normalize to DataFrames
+            df_item_stats = pd.json_normalize(item_stats)
+            df_items = pd.json_normalize(items_data)
+
+            # print(f"Item stats shape: {df_item_stats.shape}, Items data shape: {df_items.shape}")
+            # print(f"Item stats columns: {df_item_stats.columns.tolist() if not df_item_stats.empty else 'empty'}")
+
+            # Show sample of item_stats data
+            if not df_item_stats.empty:
+                pass
+                # print(f"Sample item_stats (first 3 rows):")
+                # print(df_item_stats[['item_id', 'matches', 'wins', 'losses']].head(3).to_string())
+
+            # Filter out items with zero matches
+            if not df_item_stats.empty and 'matches' in df_item_stats.columns:
+                # print(f"Before filtering: {len(df_item_stats)} items")
+                df_item_stats = df_item_stats[df_item_stats['matches'] > 0]
+                # print(f"After filtering (matches > 0): {len(df_item_stats)} items")
+
+            # Merge item stats with item metadata
+            if not df_item_stats.empty and not df_items.empty:
+                df_items_merged = pd.merge(
+                    df_item_stats,
+                    df_items,
+                    left_on='item_id',
+                    right_on='id',
+                    how='left'
+                )
+
+                # print(f"Merged items shape: {df_items_merged.shape}")
+                # print(f"Merged items columns: {df_items_merged.columns.tolist()[:10]}...")  # First 10 columns
+                # print(f"Items with missing names: {df_items_merged['name'].isna().sum() if 'name' in df_items_merged.columns else 'name column missing'}")
+
+                # Calculate win rate
+                if 'wins' in df_items_merged.columns and 'matches' in df_items_merged.columns:
+                    df_items_merged['win_rate'] = (df_items_merged['wins'] / df_items_merged['matches'] * 100).round(1)
+
+                    # Sort by matches descending and take top 10
+                    df_top_items = df_items_merged.sort_values('matches', ascending=False).head(10)
+
+                    # Build top items list
+                    for _, item_row in df_top_items.iterrows():
+                        # Get item icon (prefer image_webp over image)
+                        icon_url = None
+                        if 'image_webp' in item_row.index and pd.notna(item_row['image_webp']) and item_row['image_webp']:
+                            icon_url = item_row['image_webp']
+                        elif 'image' in item_row.index and pd.notna(item_row['image']) and item_row['image']:
+                            icon_url = item_row['image']
+
+                        # Get item name
+                        item_name = item_row.get('name', 'Unknown Item')
+
+                        top_items.append({
+                            'name': item_name,
+                            'icon_url': icon_url,
+                            'matches': int(item_row['matches']),
+                            'win_rate': f"{item_row['win_rate']:.1f}%"
+                        })
+
+                    # print(f"Top 10 items calculated: {[i['name'] for i in top_items]}")
 
         # Extract rank badge from latest game
         rank_badge_url = None
@@ -1050,7 +1584,7 @@ def create_visualizations(player_id, hero_id=None):
             division = latest_game.get('division')  # This is the tier (0-11)
             division_tier = latest_game.get('division_tier', 0)  # This is the subrank (1-6)
 
-            print(f"Player division: {division}, division_tier: {division_tier}")
+            # print(f"Player division: {division}, division_tier: {division_tier}")
 
             # Find matching rank in ranks_data
             for rank in ranks_data:
@@ -1066,8 +1600,8 @@ def create_visualizations(player_id, hero_id=None):
                     else:
                         rank_badge_url = images.get('small')
 
-                    print(f"Matched rank: {rank_name} (division {division}, tier {division_tier})")
-                    print(f"Badge URL: {rank_badge_url}")
+                    # print(f"Matched rank: {rank_name} (division {division}, tier {division_tier})")
+                    # print(f"Badge URL: {rank_badge_url}")
                     break
 
         # Extract Steam profile data
@@ -1091,9 +1625,10 @@ def create_visualizations(player_id, hero_id=None):
                         'rank_name': rank_name,
                         'rank_division_tier': rank_division_tier,
                     }
-                    print(f"Found Steam profile: {steam_data['username']}")
+                    # print(f"Found Steam profile: {steam_data['username']}")
                 else:
-                    print(f"No matching profile found for player_id: {player_id}")
+                    pass
+                    # print(f"No matching profile found for player_id: {player_id}")
             elif isinstance(steam_profile, dict):
                 # Single result returned
                 if str(steam_profile.get('account_id', '')) == str(player_id):
@@ -1105,19 +1640,314 @@ def create_visualizations(player_id, hero_id=None):
                         'rank_division_tier': rank_division_tier,
                     }
 
-        return charts, summary, steam_data, top_heroes, filtered_hero_name
+        return charts, summary, steam_data, top_heroes, top_items, filtered_hero_name, recent_matches
 
     except Exception as e:
-        print(f"Error creating visualizations: {e}")
+        # print(f"Error creating visualizations: {e}")
         import traceback
         traceback.print_exc()
-        return None, None, str(e), [], None
+        return None, None, str(e), [], [], None, []
+
+
+def get_rank_distribution():
+    """Fetch and create rank distribution chart for the index page"""
+    try:
+        import time
+        from datetime import datetime, timedelta
+
+        # Calculate timestamp for 30 days ago
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        min_timestamp = int(thirty_days_ago.timestamp())
+
+        # Fetch rank distribution data
+        connection = http.client.HTTPSConnection("api.deadlock-api.com")
+        endpoint = f"/v1/players/mmr/distribution?min_unix_timestamp={min_timestamp}"
+        headers = {'Accept': "*/*"}
+
+        connection.request("GET", endpoint, headers=headers)
+        response = connection.getresponse()
+        raw_data = response.read()
+
+        print(f"Rank distribution request status: {response.status}")
+
+        if response.status != 200:
+            print(f"Error fetching rank distribution: {raw_data[:200]}")
+            return None
+
+        data = json.loads(raw_data.decode("utf-8"))
+
+        if not data:
+            print("No rank distribution data available")
+            return None
+
+        # Also fetch ranks data for names
+        connection_ranks = http.client.HTTPSConnection("assets.deadlock-api.com")
+        connection_ranks.request("GET", "/v2/ranks", headers=headers)
+        ranks_response = connection_ranks.getresponse()
+        ranks_data = json.loads(ranks_response.read().decode("utf-8"))
+
+        # Create rank mapping, color mapping, and badge mapping
+        rank_mapping = {}
+        rank_color_mapping = {}
+        rank_badge_mapping = {}
+
+        # Color palette matching the badge colors from the image
+        default_colors = [
+            '#4a5f73',  # 0: Obscurus - dark gray (not shown in image)
+            '#cd7f32',  # 1: Initiate - bronze/brown
+            '#8b5a8e',  # 2: Seeker - purple
+            '#4a9eff',  # 3: Alchemist - blue
+            '#4ade80',  # 4: Arcanist - green
+            '#d97706',  # 5: Ritualist - orange/copper
+            '#dc2626',  # 6: Emissary - red/crimson
+            '#a855f7',  # 7: Archon - violet/purple
+            '#b8860b',  # 8: Oracle - bronze/dark gold
+            '#9ca3af',  # 9: Phantom - silver/gray
+            '#fbbf24',  # 10: Ascendant - gold
+            '#22d3ee',  # 11: Eternus - cyan/turquoise
+        ]
+
+        # print(f"Sample rank data: {ranks_data[0] if ranks_data else 'None'}")
+
+        for rank in ranks_data:
+            tier = rank.get('tier')
+            rank_name = rank.get('name', f'Rank {tier}')
+            rank_mapping[tier] = rank_name
+
+            # Get badge image - look for 'lg' (large) badge
+            images = rank.get('images', {})
+
+            # Debug: print image keys
+            if tier < 3:  # Only print first 3 for debugging
+                pass
+                # print(f"Tier {tier} ({rank_name}) images keys: {images.keys() if isinstance(images, dict) else 'not a dict'}")
+
+            badge_url = ''
+
+            # Look for 'lg_webp' or webp versions of large badge image
+            if isinstance(images, dict):
+                # Prefer webp, then fallback to png
+                for key in ['lg_webp', 'large_webp', 'badge_lg_webp', 'lg', 'large', 'badge_lg']:
+                    if key in images and images[key]:
+                        badge_url = images[key]
+                        # print(f"  Tier {tier}: Found badge at key '{key}': {badge_url[:80]}...")
+                        break
+
+            rank_badge_mapping[tier] = badge_url
+
+            # Assign color
+            rank_color = default_colors[tier] if tier < len(default_colors) else '#66c0f4'
+            rank_color_mapping[tier] = rank_color
+
+        # print(f"Rank badge mapping: {rank_badge_mapping}")
+        # print(f"Rank color mapping: {rank_color_mapping}")
+
+        # Process distribution data
+        df_dist = pd.json_normalize(data)
+        # print(f"Distribution data shape: {df_dist.shape}")
+        # print(f"Distribution columns: {df_dist.columns.tolist()}")
+        # print(f"Rank value range: {df_dist['rank'].min()} to {df_dist['rank'].max()}")
+        # print(f"Available tier mappings: {list(rank_mapping.keys())}")
+
+        # Rank encoding formula (from MMR history endpoint data):
+        # rank = (division * 10) + division_tier
+        # Example: rank 15 = division 1, tier 5 (Initiate 5)
+        #          rank 21 = division 2, tier 1 (Seeker 1)
+        #          rank 34 = division 3, tier 4 (Alchemist 4)
+
+        df_dist['tier'] = df_dist['rank'] // 10  # Division (0-11)
+        df_dist['subtier'] = df_dist['rank'] % 10  # Division tier (1-6)
+
+        # print(f"\n=== RANK DISTRIBUTION ===")
+        # print(f"Total ranks: {len(df_dist)}")
+        # print(f"Rank range: {df_dist['rank'].min()} to {df_dist['rank'].max()}")
+        # print(f"Tier range: {df_dist['tier'].min()} to {df_dist['tier'].max()}")
+        # print(f"\nFirst 15 ranks:")
+        # print(df_dist[['rank', 'tier', 'subtier', 'players']].head(15).to_string())
+
+        # Map tier to rank names and colors
+        df_dist['rank_name'] = df_dist['tier'].map(rank_mapping)
+        df_dist['color'] = df_dist['tier'].map(rank_color_mapping)
+
+        # Create full rank name with subtier (e.g., "Initiate 1", "Seeker 3")
+        df_dist['full_rank_name'] = df_dist.apply(
+            lambda row: f"{row['rank_name']} {row['subtier']}" if pd.notna(row['rank_name']) and row['subtier'] > 0 else row['rank_name'],
+            axis=1
+        )
+
+        df_dist = df_dist.sort_values('rank')
+
+        # Calculate percentage metrics
+        total_players = df_dist['players'].sum()
+        df_dist['player_pct'] = (df_dist['players'] / total_players * 100).round(2)
+
+        # Calculate cumulative percentage from the TOP (highest ranks first)
+        # Reverse order for cumulative sum, then reverse back
+        df_dist_reversed = df_dist.iloc[::-1].copy()
+        df_dist_reversed['cumulative_players'] = df_dist_reversed['players'].cumsum()
+        df_dist_reversed['top_pct'] = (df_dist_reversed['cumulative_players'] / total_players * 100).round(2)
+
+        # Merge back to original order
+        df_dist = df_dist_reversed.iloc[::-1].reset_index(drop=True)
+
+        # print(f"Total players: {total_players:,}")
+        # print(f"Sample with percentages:")
+        # print(df_dist[['rank', 'full_rank_name', 'players', 'player_pct', 'top_pct']].head(10).to_string())
+
+        # Create bar chart using full rank names with color coding
+        fig = go.Figure()
+
+        fig.add_trace(go.Bar(
+            x=df_dist['full_rank_name'].tolist(),
+            y=df_dist['players'].tolist(),
+            marker=dict(
+                color=df_dist['color'].tolist(),  # Use tier-specific colors
+                line=dict(color='#1b2838', width=1)
+            ),
+            customdata=df_dist[['player_pct', 'top_pct']].values.tolist(),
+            hovertemplate=(
+                '<b>%{x}</b><br>'
+                'Players: %{y:,}<br>'
+                '% of player pop.: %{customdata[0]:.2f}%<br>'
+                'Top %{customdata[1]:.2f}% of player base'
+                '<extra></extra>'
+            )
+        ))
+
+        # Add badge images at division boundaries (centered on 3rd subtier)
+        images = []
+
+        # Find positions for each tier's 3rd subtier (or middle position)
+        tier_positions = {}  # Map tier to list of positions
+
+        for position, (idx, row) in enumerate(df_dist.iterrows()):
+            tier = row['tier']
+            subtier = row['subtier']
+
+            if tier not in tier_positions:
+                tier_positions[tier] = []
+            tier_positions[tier].append({'position': position, 'subtier': subtier})
+
+        # Calculate center position for each tier (prefer subtier 3, or middle of available)
+        x_positions = {}
+        for tier, positions_list in tier_positions.items():
+            # Look for subtier 3
+            subtier_3 = [p for p in positions_list if p['subtier'] == 3]
+            if subtier_3:
+                x_positions[tier] = subtier_3[0]['position']
+            else:
+                # Use middle position if subtier 3 doesn't exist
+                middle_idx = len(positions_list) // 2
+                x_positions[tier] = positions_list[middle_idx]['position']
+
+        # print(f"Badge positions (centered on 3rd subtier): {x_positions}")
+
+        # Add badge images above the first bar of each division
+        for tier, x_pos in x_positions.items():
+            badge_url = rank_badge_mapping.get(tier)
+            rank_name = rank_mapping.get(tier, f'Rank {tier}')
+
+            # print(f"Tier {tier} ({rank_name}): position={x_pos}, badge_url={badge_url}")
+
+            if badge_url:
+                # Oracle (8), Phantom (9), Ascendant (10), Eternus (11) need larger size
+                # because their badge images have different dimensions
+                if tier >= 8:
+                    badge_sizex = 6  # Double width for high ranks
+                    badge_sizey = 0.24  # Double height for high ranks
+                else:
+                    badge_sizex = 3  # Normal width for other ranks
+                    badge_sizey = 0.12  # Normal height for other ranks
+
+                # Add image at the x-axis position (bar index)
+                images.append(dict(
+                    source=badge_url,
+                    xref="x",
+                    yref="paper",
+                    x=x_pos,  # Bar position (0, 1, 2, 3...)
+                    y=1.08,   # Above the chart
+                    sizex=badge_sizex,  # Width in bar units
+                    sizey=badge_sizey,  # Height relative to chart
+                    xanchor="center",
+                    yanchor="bottom",
+                    layer="above"
+                ))
+                # print(f"  → Added badge image at position {x_pos}")
+
+        # print(f"Total badge images added: {len(images)}")
+
+        fig.update_layout(
+            xaxis_title='Rank',
+            yaxis_title='Number of Players',
+            xaxis=dict(
+                tickangle=-45,
+                tickfont=dict(size=10)
+            ),
+            height=600,  # Taller to match input container height
+            showlegend=False,
+            margin=dict(t=100, b=80, l=60, r=40),  # Larger top margin for badge images
+            images=images if images else []
+        )
+
+        # print(f"Final chart layout images count: {len(fig.layout.images) if hasattr(fig.layout, 'images') else 0}")
+
+        # print(f"Chart created successfully with {len(df_dist)} ranks")
+        return json.dumps(fig, cls=PlotlyJSONEncoder)
+
+    except Exception as e:
+        # print(f"Error creating rank distribution chart: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+def get_leaderboard():
+    """Fetch top 100 players from Statlocker API"""
+    try:
+        connection = http.client.HTTPSConnection("statlocker.gg")
+        connection.request("GET", "/api/leaderboard/get-pp-rankings/?version=2")
+        response = connection.getresponse()
+        raw_data = response.read()
+
+        print(f"Statlocker API request status: {response.status}")
+
+        if response.status != 200:
+            print(f"Error fetching leaderboard: {raw_data[:200]}")
+            return []
+
+        data = json.loads(raw_data.decode("utf-8"))
+
+        # Data is nested inside a "data" key
+        players = data.get("data", []) if isinstance(data, dict) else data
+
+        # Return top 40 players with normalized field names
+        leaderboard = []
+        for player in players[:40]:
+            leaderboard.append({
+                'rank': player.get('rank'),
+                'account_id': player.get('accountId'),
+                'username': player.get('name'),
+                'avatar_url': player.get('avatarUrl'),
+                'performance_rank': player.get('performanceRankMessage'),
+                'pp_score': player.get('ppScore')
+            })
+
+        print(f"  → Leaderboard: {len(leaderboard)} players loaded")
+        return leaderboard
+
+    except Exception as e:
+        print(f"Error fetching leaderboard: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
 
 
 @app.route('/')
 def index():
-    """Render the home page with input form"""
-    return render_template('index.html')
+    """Render the home page with input form and rank distribution"""
+    rank_distribution_chart = get_rank_distribution()
+    leaderboard_data = get_leaderboard()
+    return render_template('index.html', rank_distribution=rank_distribution_chart, leaderboard=leaderboard_data)
 
 
 @app.route('/analyze', methods=['GET', 'POST'])
@@ -1134,7 +1964,7 @@ def analyze():
     if not player_id:
         return render_template('index.html', error="Please enter a valid Player ID")
 
-    charts, summary, steam_data, top_heroes, filtered_hero_name = create_visualizations(player_id, hero_id)
+    charts, summary, steam_data, top_heroes, top_items, filtered_hero_name, recent_matches = create_visualizations(player_id, hero_id)
 
     if charts is None:
         return render_template('index.html', error=f"Error fetching data: {steam_data}")
@@ -1146,7 +1976,9 @@ def analyze():
                           charts=charts,
                           summary=summary,
                           steam_data=steam_data,
-                          top_heroes=top_heroes)
+                          top_heroes=top_heroes,
+                          top_items=top_items,
+                          recent_matches=recent_matches)
 
 
 if __name__ == '__main__':
