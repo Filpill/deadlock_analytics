@@ -208,6 +208,26 @@ The Flask application provides a comprehensive player analytics dashboard with S
 - **Purpose**: Track skill progression and performance improvement over time
 - **Title**: "KDA Trend Over Time (7-Day Rolling Average)"
 
+#### Chart 8: Hero Statistics Heatmap
+- **Type**: Interactive heatmap with filtering and sorting
+- **API**: `/v1/players/hero-stats`
+- **Description**:
+  - Y-axis: Hero icons with match counts in brackets
+  - X-axis: Metrics (per_match, per_min, per_soul, win_rate, accuracy, crit_shot_rate)
+  - Color coding: Blue (below avg), White (avg), Red (above avg)
+  - Click column headers to sort by metric
+  - Minimum games filter dropdown (5, 10, 25, 50, 100, 200 matches)
+- **Purpose**: Compare hero performance across all metrics at a glance
+
+#### Match History Table
+- **Location**: Below Top 5 Heroes section on results page
+- **Features**:
+  - Displays 5 most recent matches per page with pagination
+  - Columns: Match ID, Date, Hero (with icon), Result, K/D/A, Net Worth, Last Hits, Denies, Duration
+  - Click rows to play sequential tile footstep sounds
+  - Pagination buttons play UI shop click sound
+- **API**: `/v1/players/{id}/match-history`
+
 ### Interactive Audio Features
 
 The application includes immersive audio feedback for various user interactions:
