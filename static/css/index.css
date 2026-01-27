@@ -21,6 +21,36 @@ body {
     position: relative;
 }
 
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(22, 32, 45, 0.85);
+    z-index: 0;
+}
+
+.banner-container {
+    max-width: 1600px;
+    width: 100%;
+    position: relative;
+    z-index: 1;
+    margin-bottom: 20px;
+    overflow: hidden;
+    border-radius: 4px;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+}
+
+.cityscape-banner {
+    width: 100%;
+    height: auto;
+    display: block;
+    border: 1px solid #3d4e5c;
+    border-radius: 4px;
+}
+
 .page-wrapper {
     display: flex;
     flex-direction: row;
