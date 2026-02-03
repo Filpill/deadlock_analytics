@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Match Analysis - {{ match_id }}</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Detailed match breakdown and team performance analysis for Deadlock match {{ match_id }}.">
+
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/match.css') }}">
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Applying filter...</div>
+    </div>
+
+    <div class="container">
+        <!-- Header Section -->
+        <div class="header">
+            <div class="match-info-card">
+                <div class="card-header">
+                    <h1>Match Analysis</h1>
+                    <a href="/?mode=match" class="back-button">Analyze Another Match</a>
+                </div>
+                {% if match_summary %}
+                <div class="match-details">
+                    <div class="match-date">
+                        <span class="date-text">{{ match_summary.start_date_formatted }}</span>
+                    </div>
+                    <div class="match-id">
+                        <span class="label">Match ID:</span>
+                        <span class="value">{{ match_summary.match_id }}</span>
+                        <button class="copy-btn" onclick="copyMatchId()">Copy</button>
+                    </div>
+                    <div class="match-meta">
+                        <div class="meta-item">
+                            <span class="label">Duration:</span>
+                            <span class="value">{{ match_summary.duration_formatted }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="label">Game Mode:</span>
+                            <span class="value">{{ match_summary.game_mode }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Filter Badge -->
+        {% if filtered_player_info %}
+        <div class="filter-banner">
+            <span class="filter-text">Viewing: {{ filtered_player_info.hero_name }} ({{ filtered_player_info.account_id }})</span>
+            <a href="/match-analysis?match_id={{ match_id }}" class="clear-filter-btn">Clear Filter</a>
+        </div>
+        {% endif %}
+
+        <!-- Team Comparison Section -->
+        {% if team_stats %}
+        <div class="team-comparison">
+            <div class="team-card team-0">
+                <h2>
+                    {% if match_summary.patron_logo_team0 %}
+                    <img src="{{ match_summary.patron_logo_team0 }}" alt="Archmother" class="patron-logo">
+                    {% endif %}
+                    Archmother
+                    {% if match_summary.winning_team == 1 %}
+                    <span class="victory-badge">Victory</span>
+                    {% endif %}
+                </h2>
+                <div class="team-stats">
+                    <div class="stat-row">
+                        <span class="stat-label">Kills:</span>
+                        <span class="stat-value">{{ team_stats.team1.kills }}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Deaths:</span>
+                        <span class="stat-value">{{ team_stats.team1.deaths }}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Assists:</span>
+                        <span class="stat-value">{{ team_stats.team1.assists }}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Net Worth:</span>
+                        <span class="stat-value">{% if team_stats.team1.net_worth >= 1000 %}{{ (team_stats.team1.net_worth / 1000) | round | int }}k{% else %}{{ team_stats.team1.net_worth }}{% endif %}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Player Damage:</span>
+                        <span class="stat-value">{% if team_stats.team1.player_damage >= 1000 %}{{ (team_stats.team1.player_damage / 1000) | round | int }}k{% else %}{{ team_stats.team1.player_damage }}{% endif %}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Ability Points:</span>
+                        <span class="stat-value">{{ team_stats.team1.ability_points }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="team-card team-1">
+                <h2>
+                    {% if match_summary.patron_logo_team1 %}
+                    <img src="{{ match_summary.patron_logo_team1 }}" alt="Hidden King" class="patron-logo">
+                    {% endif %}
+                    Hidden King
+                    {% if match_summary.winning_team == 0 %}
+                    <span class="victory-badge">Victory</span>
+                    {% endif %}
+                </h2>
+                <div class="team-stats">
+                    <div class="stat-row">
+                        <span class="stat-label">Kills:</span>
+                        <span class="stat-value">{{ team_stats.team0.kills }}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Deaths:</span>
+                        <span class="stat-value">{{ team_stats.team0.deaths }}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Assists:</span>
+                        <span class="stat-value">{{ team_stats.team0.assists }}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Net Worth:</span>
+                        <span class="stat-value">{% if team_stats.team0.net_worth >= 1000 %}{{ (team_stats.team0.net_worth / 1000) | round | int }}k{% else %}{{ team_stats.team0.net_worth }}{% endif %}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Player Damage:</span>
+                        <span class="stat-value">{% if team_stats.team0.player_damage >= 1000 %}{{ (team_stats.team0.player_damage / 1000) | round | int }}k{% else %}{{ team_stats.team0.player_damage }}{% endif %}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Ability Points:</span>
+                        <span class="stat-value">{{ team_stats.team0.ability_points }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Player Scoreboard -->
+        {% if player_scoreboard %}
+        <div class="scoreboard-section">
+            <h2>Player Scoreboard</h2>
+            <div class="table-container">
+                <table class="scoreboard-table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable(0)">Slot</th>
+                            <th onclick="sortTable(1)">Team</th>
+                            <th onclick="sortTable(2)">Hero</th>
+                            <th onclick="sortTable(3)">Account ID</th>
+                            <th onclick="sortTable(4)">K</th>
+                            <th onclick="sortTable(5)">D</th>
+                            <th onclick="sortTable(6)">A</th>
+                            <th onclick="sortTable(7)">Net Worth</th>
+                            <th onclick="sortTable(8)">Last Hits</th>
+                            <th onclick="sortTable(9)">Denies</th>
+                            <th onclick="sortTable(10)">Player Dmg</th>
+                            <th onclick="sortTable(11)">Obj Dmg</th>
+                            <th onclick="sortTable(12)">Healing</th>
+                            <th class="items-header no-sort">Items (End Game)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for player in player_scoreboard %}
+                        <tr class="player-row team-{{ player.team }} {% if player_slot and player.player_slot == player_slot %}filtered-player{% endif %}"
+                            onclick="filterByPlayer({{ player.player_slot }})">
+                            <td>{{ player.player_slot }}</td>
+                            <td class="team-cell">
+                                {% if player.team == 0 %}
+                                    {% if match_summary.patron_logo_team0 %}
+                                    <img src="{{ match_summary.patron_logo_team0 }}" alt="Archmother" class="team-logo-small" title="Archmother">
+                                    {% else %}
+                                    Archmother
+                                    {% endif %}
+                                {% else %}
+                                    {% if match_summary.patron_logo_team1 %}
+                                    <img src="{{ match_summary.patron_logo_team1 }}" alt="Hidden King" class="team-logo-small" title="Hidden King">
+                                    {% else %}
+                                    Hidden King
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="hero-cell">
+                                    {% if player.hero_icon %}
+                                    <img src="{{ player.hero_icon }}" alt="{{ player.hero_name }}" class="hero-icon-small">
+                                    {% endif %}
+                                    <span>{{ player.hero_name }}</span>
+                                    {% if player.mvp_rank == 1 %}
+                                    <span class="mvp-badge" title="MVP">★</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td>{{ player.account_id }}</td>
+                            <td class="kills">{{ player.kills }}</td>
+                            <td class="deaths">{{ player.deaths }}</td>
+                            <td class="assists">{{ player.assists }}</td>
+                            <td>{% if player.net_worth >= 1000 %}{{ (player.net_worth / 1000) | round | int }}k{% else %}{{ player.net_worth }}{% endif %}</td>
+                            <td>{% if player.last_hits >= 1000 %}{{ (player.last_hits / 1000) | round | int }}k{% else %}{{ player.last_hits }}{% endif %}</td>
+                            <td>{% if player.denies >= 1000 %}{{ (player.denies / 1000) | round | int }}k{% else %}{{ player.denies }}{% endif %}</td>
+                            <td>{% if player.player_damage >= 1000 %}{{ (player.player_damage / 1000) | round | int }}k{% else %}{{ player.player_damage }}{% endif %}</td>
+                            <td>{% if player.boss_damage >= 1000 %}{{ (player.boss_damage / 1000) | round | int }}k{% else %}{{ player.boss_damage }}{% endif %}</td>
+                            <td class="healing">{% if player.player_healing >= 1000 %}{{ (player.player_healing / 1000) | round | int }}k{% else %}{{ player.player_healing }}{% endif %}</td>
+                            <td class="items-cell">
+                                {% if player.final_items %}
+                                    {% for item in player.final_items %}
+                                    <img src="{{ item.icon }}" alt="{{ item.name }}" class="item-icon" title="{{ item.name }}">
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="no-items">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <script>
+        // Copy match ID to clipboard
+        function copyMatchId() {
+            const matchId = "{{ match_id }}";
+            navigator.clipboard.writeText(matchId).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = originalText, 2000);
+            });
+        }
+
+        // Filter by player
+        function filterByPlayer(playerSlot) {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            loadingOverlay.classList.add('active');
+
+            // Navigate to filtered view
+            window.location.href = `/match-analysis?match_id={{ match_id }}&player_slot=${playerSlot}`;
+        }
+
+        // Table sorting
+        let sortDirection = 1;
+        let lastSortedColumn = -1;
+
+        function sortTable(columnIndex) {
+            const table = document.querySelector('.scoreboard-table tbody');
+            const rows = Array.from(table.querySelectorAll('tr'));
+
+            // Toggle direction if clicking same column
+            if (lastSortedColumn === columnIndex) {
+                sortDirection *= -1;
+            } else {
+                sortDirection = 1;
+                lastSortedColumn = columnIndex;
+            }
+
+            rows.sort((a, b) => {
+                let aValue = a.cells[columnIndex].textContent.replace(/,/g, '').trim();
+                let bValue = b.cells[columnIndex].textContent.replace(/,/g, '').trim();
+
+                // Handle "k" suffix (thousands)
+                if (aValue.endsWith('k')) {
+                    aValue = parseFloat(aValue.slice(0, -1)) * 1000;
+                }
+                if (bValue.endsWith('k')) {
+                    bValue = parseFloat(bValue.slice(0, -1)) * 1000;
+                }
+
+                // Try numeric comparison first
+                const aNum = parseFloat(aValue);
+                const bNum = parseFloat(bValue);
+
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return (aNum - bNum) * sortDirection;
+                }
+
+                // Fall back to string comparison
+                return aValue.toString().localeCompare(bValue.toString()) * sortDirection;
+            });
+
+            // Reorder rows
+            rows.forEach(row => table.appendChild(row));
+        }
+
+        // Apply Steam theme to all charts
+        function applySteamTheme(chart) {
+            chart.layout.paper_bgcolor = 'rgba(0, 0, 0, 0)';
+            chart.layout.plot_bgcolor = 'rgba(22, 32, 45, 0.4)';
+            chart.layout.font = { color: '#c7d5e0', family: 'Motiva Sans, Arial', size: 12 };
+
+            if (chart.layout.xaxis) {
+                chart.layout.xaxis.gridcolor = '#3d4e5c';
+                chart.layout.xaxis.zerolinecolor = '#3d4e5c';
+            }
+            if (chart.layout.yaxis) {
+                chart.layout.yaxis.gridcolor = '#3d4e5c';
+                chart.layout.yaxis.zerolinecolor = '#3d4e5c';
+            }
+
+            if (chart.layout.title) {
+                chart.layout.title.font = { color: '#66c0f4', size: 22 };
+            }
+
+            return chart;
+        }
+
+        // Charts will be rendered here in future iterations
+
+        // Hide loading overlay on page show (for back button)
+        window.addEventListener('pageshow', function(event) {
+            document.getElementById('loadingOverlay').classList.remove('active');
+        });
+    </script>
+</body>
+</html>

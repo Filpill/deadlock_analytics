@@ -7,8 +7,17 @@ from scipy import stats
 import plotly.graph_objs as go
 import plotly.express as px
 from plotly.utils import PlotlyJSONEncoder
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
+
+# Server-side cache for index page data (24 hour TTL)
+_index_cache = {
+    'rank_distribution': None,
+    'leaderboard': None,
+    'timestamp': None
+}
+CACHE_DURATION_HOURS = 24
 
 
 def get_api_connection(player_id, hero_id=None):
@@ -33,6 +42,30 @@ def get_api_connection(player_id, hero_id=None):
                 "mmr_history": f"/v1/players/{player_id}/mmr-history",
                 # hero_stats: Per-hero statistics (never filtered by hero_id)
                 "hero_stats": f"/v1/players/{player_id}/hero-stats",
+            }
+        },
+        "assets-api": {
+            "http_client": http.client.HTTPSConnection("assets.deadlock-api.com"),
+            "endpoint": {
+                "heroes": "/v2/heroes",
+                "items": "/v2/items",
+                "ranks": "/v2/ranks",
+                "images": "/v1/images",
+            }
+        },
+        "headers": {
+            'Accept': "*/*"
+        }
+    }
+
+
+def get_match_api_connection(match_id):
+    """Setup API connection configuration for match analysis"""
+    return {
+        "data-api": {
+            "http_client": http.client.HTTPSConnection("api.deadlock-api.com"),
+            "endpoint": {
+                "match_metadata": f"/v1/matches/{match_id}/metadata",
             }
         },
         "assets-api": {
@@ -123,6 +156,7 @@ def create_visualizations(player_id, hero_id=None):
         mmr_history = get_request_data(connection, "data-api", "mmr_history")
         item_stats = get_request_data(connection, "data-api", "item_stats")
         items_data = get_request_data(connection, "assets-api", "items")
+        images_data = get_request_data(connection, "assets-api", "images")
         hero_stats = get_request_data(connection, "data-api", "hero_stats")
 
         if not match_history:
@@ -1555,15 +1589,21 @@ def create_visualizations(player_id, hero_id=None):
 
                     # Build top items list
                     for _, item_row in df_top_items.iterrows():
-                        # Get item icon (prefer image_webp over image)
-                        icon_url = None
-                        if 'image_webp' in item_row.index and pd.notna(item_row['image_webp']) and item_row['image_webp']:
-                            icon_url = item_row['image_webp']
-                        elif 'image' in item_row.index and pd.notna(item_row['image']) and item_row['image']:
-                            icon_url = item_row['image']
-
                         # Get item name
                         item_name = item_row.get('name', 'Unknown Item')
+
+                        # Convert item name to snake_case for image key matching
+                        item_name_snake = item_name.lower().replace(' ', '_').replace('-', '_')
+
+                        # Try to find matching image in images endpoint with _sm_webp suffix
+                        icon_url = None
+                        if images_data:
+                            # Try weapon, spirit, and vitality categories
+                            for category in ['weapon', 'spirit', 'vitality']:
+                                image_key = f'items_{category}_{item_name_snake}_sm_webp'
+                                if image_key in images_data:
+                                    icon_url = images_data[image_key]
+                                    break
 
                         top_items.append({
                             'name': item_name,
@@ -1885,7 +1925,7 @@ def get_rank_distribution():
             ),
             height=600,  # Taller to match input container height
             showlegend=False,
-            margin=dict(t=100, b=80, l=60, r=40),  # Larger top margin for badge images
+            margin=dict(t=100, b=20, l=20, r=10),  # Minimal margins to fill container
             images=images if images else []
         )
 
@@ -1942,11 +1982,287 @@ def get_leaderboard():
         return []
 
 
+def create_match_visualizations(match_id, player_slot=None):
+    """Fetch match data and create visualizations for match analysis"""
+    connection = get_match_api_connection(match_id)
+
+    try:
+        # Fetch data from API endpoints
+        match_data = get_request_data(connection, "data-api", "match_metadata")
+        hero_names = get_request_data(connection, "assets-api", "heroes")
+        ranks_data = get_request_data(connection, "assets-api", "ranks")
+        items_data = get_request_data(connection, "assets-api", "items")
+        images_data = get_request_data(connection, "assets-api", "images")
+
+        if not match_data or 'match_info' not in match_data:
+            return None, "Failed to fetch match data from API", None, None, None
+
+        match_info = match_data['match_info']
+
+        # Convert to DataFrames
+        df_heroes = pd.json_normalize(hero_names) if hero_names else pd.DataFrame()
+        df_ranks = pd.json_normalize(ranks_data) if ranks_data else pd.DataFrame()
+        df_items = pd.json_normalize(items_data) if items_data else pd.DataFrame()
+
+        # Filter items to only include upgrades (exclude abilities and weapons)
+        if not df_items.empty and 'type' in df_items.columns:
+            df_items = df_items[df_items['type'] == 'upgrade']
+
+        # Process players data
+        df_players = pd.json_normalize(match_info['players'])
+
+        # Enrich with hero names
+        if not df_heroes.empty:
+            df_players = pd.merge(df_players, df_heroes[['id', 'name', 'class_name']],
+                                 left_on='hero_id', right_on='id', how='left', suffixes=('', '_hero'))
+            df_players = df_players.rename(columns={'name': 'hero_name'})
+
+        # Add result column
+        winning_team = match_info.get('winning_team', 0)
+        df_players['result'] = df_players['team'].apply(lambda t: 'Win' if t == winning_team else 'Loss')
+
+        # Identify filtered player
+        filtered_player_info = None
+        if player_slot is not None and not df_players.empty:
+            player_match = df_players[df_players['player_slot'] == player_slot]
+            if not player_match.empty:
+                player = player_match.iloc[0]
+                filtered_player_info = {
+                    'player_slot': player_slot,
+                    'hero_name': player.get('hero_name', 'Unknown'),
+                    'account_id': player.get('account_id', 'N/A')
+                }
+
+        # Process time-series stats
+        all_stats = []
+        for player in match_info['players']:
+            if 'stats' in player:
+                for stat in player['stats']:
+                    stat['player_slot'] = player['player_slot']
+                    stat['team'] = player['team']
+                    stat['hero_id'] = player['hero_id']
+                    all_stats.append(stat)
+
+        df_stats = pd.DataFrame(all_stats) if all_stats else pd.DataFrame()
+
+        # Enrich stats with hero names
+        if not df_stats.empty and not df_heroes.empty:
+            df_stats = pd.merge(df_stats, df_heroes[['id', 'name']],
+                               left_on='hero_id', right_on='id', how='left', suffixes=('', '_hero'))
+            df_stats = df_stats.rename(columns={'name': 'hero_name'})
+
+        charts = {}
+
+        # Charts will be added here in future iterations
+
+        # Match Summary
+        duration_s = match_info.get('duration_s', 0)
+        start_time = match_info.get('start_time', 0)
+
+        # Format start_time as readable date
+        from datetime import datetime
+        start_datetime = datetime.fromtimestamp(start_time) if start_time > 0 else None
+        start_date_formatted = start_datetime.strftime('%B %d, %Y at %H:%M') if start_datetime else 'Unknown'
+
+        # Extract patron logos from images endpoint
+        # Team 0 (Blue) = Archmother (team2 logo), Team 1 (Orange) = Hidden King (team1 logo)
+        patron_logo_team0 = images_data.get('hud_core_team2_patron_logo_webp') if images_data else None
+        patron_logo_team1 = images_data.get('hud_core_team1_patron_logo_webp') if images_data else None
+
+        match_summary = {
+            'match_id': match_info.get('match_id', match_id),
+            'duration_s': duration_s,
+            'duration_formatted': f"{duration_s // 60}:{duration_s % 60:02d}",
+            'start_time': start_time,
+            'start_date_formatted': start_date_formatted,
+            'winning_team': winning_team,
+            'game_mode': match_info.get('game_mode', 'Unknown'),
+            'patron_logo_team0': patron_logo_team0,
+            'patron_logo_team1': patron_logo_team1,
+        }
+
+        # Calculate player damage, boss damage, and total healing from final stats (last entry in stats array)
+        if not df_stats.empty:
+            # Get final stats (last timestamp) for each player
+            final_stats = df_stats.groupby('player_slot').last().reset_index()
+
+            # Calculate total healing (player_healing + teammate_barriering - self_damage)
+            healing_cols = []
+            if 'player_healing' in final_stats.columns:
+                healing_cols.append('player_healing')
+            if 'teammate_barriering' in final_stats.columns:
+                healing_cols.append('teammate_barriering')
+
+            if healing_cols:
+                final_stats['total_healing'] = final_stats[healing_cols].fillna(0).sum(axis=1)
+
+                # Subtract self_damage if available
+                if 'self_damage' in final_stats.columns:
+                    final_stats['total_healing'] = final_stats['total_healing'] - final_stats['self_damage'].fillna(0)
+            else:
+                final_stats['total_healing'] = 0
+
+            # Select columns to merge
+            merge_cols = ['player_slot']
+            if 'player_damage' in final_stats.columns:
+                merge_cols.append('player_damage')
+            if 'boss_damage' in final_stats.columns:
+                merge_cols.append('boss_damage')
+            merge_cols.append('total_healing')
+
+            # Merge with players to get team info
+            df_players_with_damage = pd.merge(df_players, final_stats[merge_cols],
+                                              on='player_slot', how='left')
+        else:
+            df_players_with_damage = df_players.copy()
+            df_players_with_damage['player_damage'] = 0
+            df_players_with_damage['boss_damage'] = 0
+            df_players_with_damage['total_healing'] = 0
+
+        # Team Stats
+        team_stats = {
+            'team0': {
+                'kills': int(df_players[df_players['team'] == 0]['kills'].sum()) if not df_players.empty else 0,
+                'deaths': int(df_players[df_players['team'] == 0]['deaths'].sum()) if not df_players.empty else 0,
+                'assists': int(df_players[df_players['team'] == 0]['assists'].sum()) if not df_players.empty else 0,
+                'net_worth': int(df_players[df_players['team'] == 0]['net_worth'].sum()) if not df_players.empty else 0,
+                'player_damage': int(df_players_with_damage[df_players_with_damage['team'] == 0]['player_damage'].sum()) if not df_players_with_damage.empty else 0,
+                'ability_points': int(df_players[df_players['team'] == 0]['ability_points'].sum()) if not df_players.empty and 'ability_points' in df_players.columns else 0,
+            },
+            'team1': {
+                'kills': int(df_players[df_players['team'] == 1]['kills'].sum()) if not df_players.empty else 0,
+                'deaths': int(df_players[df_players['team'] == 1]['deaths'].sum()) if not df_players.empty else 0,
+                'assists': int(df_players[df_players['team'] == 1]['assists'].sum()) if not df_players.empty else 0,
+                'net_worth': int(df_players[df_players['team'] == 1]['net_worth'].sum()) if not df_players.empty else 0,
+                'player_damage': int(df_players_with_damage[df_players_with_damage['team'] == 1]['player_damage'].sum()) if not df_players_with_damage.empty else 0,
+                'ability_points': int(df_players[df_players['team'] == 1]['ability_points'].sum()) if not df_players.empty and 'ability_points' in df_players.columns else 0,
+            }
+        }
+
+        # Player Scoreboard
+        player_scoreboard = []
+        if not df_players_with_damage.empty:
+            for player in df_players_with_damage.itertuples():
+                # Get hero icon URL
+                hero_name = player.hero_name if hasattr(player, 'hero_name') else 'Unknown'
+                icon_url = None
+
+                if not df_heroes.empty and hero_name != 'Unknown':
+                    hero_info = df_heroes[df_heroes['name'] == hero_name]
+                    if not hero_info.empty:
+                        hero_row = hero_info.iloc[0]
+                        # Try multiple image fields in order of preference
+                        for img_key in ['images.icon_image_small', 'images.icon_hero_card', 'images.minimap_image']:
+                            if img_key in hero_row.index and pd.notna(hero_row[img_key]) and hero_row[img_key]:
+                                icon_url = hero_row[img_key]
+                                break
+
+                # Get final items (not sold) from match_info players data
+                final_items = []
+                player_data = None
+                for p in match_info['players']:
+                    if p['player_slot'] == player.player_slot:
+                        player_data = p
+                        break
+
+                if player_data and 'items' in player_data and player_data['items']:
+                    # Ensure items is iterable (list/array)
+                    items_list = player_data['items']
+                    if isinstance(items_list, (list, tuple)):
+                        # Collect unique item_ids that haven't been sold
+                        seen_item_ids = set()
+                        for item in items_list:
+                            if isinstance(item, dict) and item.get('sold_time_s', 0) == 0:
+                                item_id = item.get('item_id')
+                                if item_id:
+                                    seen_item_ids.add(item_id)
+
+                        # Match unique item_ids with items API data (filtered to upgrades only)
+                        for item_id in seen_item_ids:
+                            if not df_items.empty:
+                                item_info = df_items[df_items['id'] == item_id]
+                                if not item_info.empty:
+                                    item_row = item_info.iloc[0]
+                                    item_icon = None
+
+                                    item_name = item_row['name'] if 'name' in item_row.index else 'Unknown Item'
+
+                                    # Convert item name to snake_case for image key matching
+                                    item_name_snake = item_name.lower().replace(' ', '_').replace('-', '_')
+
+                                    # Try to find matching image in images endpoint with _sm_webp suffix
+                                    if images_data:
+                                        # Try weapon, spirit, and vitality categories
+                                        for category in ['weapon', 'spirit', 'vitality']:
+                                            image_key = f'items_{category}_{item_name_snake}_sm_webp'
+                                            if image_key in images_data:
+                                                item_icon = images_data[image_key]
+                                                break
+
+                                    if item_icon:
+                                        final_items.append({
+                                            'name': item_name,
+                                            'icon': item_icon
+                                        })
+
+                player_scoreboard.append({
+                    'player_slot': player.player_slot,
+                    'team': player.team,
+                    'hero_name': hero_name,
+                    'hero_icon': icon_url,
+                    'account_id': player.account_id if hasattr(player, 'account_id') else 'N/A',
+                    'kills': int(player.kills) if hasattr(player, 'kills') else 0,
+                    'deaths': int(player.deaths) if hasattr(player, 'deaths') else 0,
+                    'assists': int(player.assists) if hasattr(player, 'assists') else 0,
+                    'net_worth': int(player.net_worth) if hasattr(player, 'net_worth') else 0,
+                    'last_hits': int(player.last_hits) if hasattr(player, 'last_hits') else 0,
+                    'denies': int(player.denies) if hasattr(player, 'denies') else 0,
+                    'player_damage': int(player.player_damage) if hasattr(player, 'player_damage') else 0,
+                    'boss_damage': int(player.boss_damage) if hasattr(player, 'boss_damage') else 0,
+                    'player_healing': int(player.total_healing) if hasattr(player, 'total_healing') else 0,
+                    'result': player.result if hasattr(player, 'result') else 'Unknown',
+                    'mvp_rank': int(player.mvp_rank) if hasattr(player, 'mvp_rank') and pd.notna(player.mvp_rank) else None,
+                    'final_items': final_items
+                })
+
+        # Sort player scoreboard by player_slot
+        player_scoreboard = sorted(player_scoreboard, key=lambda x: x['player_slot'])
+
+        return charts, match_summary, team_stats, player_scoreboard, filtered_player_info
+
+    except Exception as e:
+        print(f"Error in create_match_visualizations: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, str(e), None, None, None
+
+
 @app.route('/')
 def index():
     """Render the home page with input form and rank distribution"""
-    rank_distribution_chart = get_rank_distribution()
-    leaderboard_data = get_leaderboard()
+    global _index_cache
+
+    # Check if cache is valid (within 24 hours)
+    cache_valid = False
+    if _index_cache['timestamp']:
+        cache_age = datetime.now() - _index_cache['timestamp']
+        cache_valid = cache_age < timedelta(hours=CACHE_DURATION_HOURS)
+
+    # Use cached data if valid, otherwise fetch fresh data
+    if cache_valid:
+        print("Using cached index page data")
+        rank_distribution_chart = _index_cache['rank_distribution']
+        leaderboard_data = _index_cache['leaderboard']
+    else:
+        print("Fetching fresh index page data")
+        rank_distribution_chart = get_rank_distribution()
+        leaderboard_data = get_leaderboard()
+
+        # Update cache
+        _index_cache['rank_distribution'] = rank_distribution_chart
+        _index_cache['leaderboard'] = leaderboard_data
+        _index_cache['timestamp'] = datetime.now()
+
     return render_template('index.html', rank_distribution=rank_distribution_chart, leaderboard=leaderboard_data)
 
 
@@ -1979,6 +2295,35 @@ def analyze():
                           top_heroes=top_heroes,
                           top_items=top_items,
                           recent_matches=recent_matches)
+
+
+@app.route('/match-analysis', methods=['GET', 'POST'])
+def match_analysis():
+    """Process match_id and generate match visualizations"""
+    # Handle both form submission and query params
+    if request.method == 'POST':
+        match_id = request.form.get('match_id', '').strip()
+    else:  # GET request
+        match_id = request.args.get('match_id', '').strip()
+
+    player_slot = request.args.get('player_slot', type=int)  # Optional filter (None if not provided)
+
+    if not match_id:
+        return render_template('index.html', error="Please enter a valid Match ID")
+
+    charts, match_summary, team_stats, player_scoreboard, filtered_player_info = create_match_visualizations(match_id, player_slot)
+
+    if charts is None:
+        return render_template('index.html', error=f"Error fetching match data: {match_summary}")
+
+    return render_template('match.html',
+                          match_id=match_id,
+                          player_slot=player_slot,
+                          filtered_player_info=filtered_player_info,
+                          charts=charts,
+                          match_summary=match_summary,
+                          team_stats=team_stats,
+                          player_scoreboard=player_scoreboard)
 
 
 if __name__ == '__main__':
