@@ -1,4 +1,5 @@
 import json
+import base64
 import http.client
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
@@ -75,6 +76,7 @@ def get_match_api_connection(match_id):
                 "items": "/v2/items",
                 "ranks": "/v2/ranks",
                 "images": "/v1/images",
+                "map": "/v1/map",
             }
         },
         "headers": {
@@ -1993,6 +1995,7 @@ def create_match_visualizations(match_id, player_slot=None):
         ranks_data = get_request_data(connection, "assets-api", "ranks")
         items_data = get_request_data(connection, "assets-api", "items")
         images_data = get_request_data(connection, "assets-api", "images")
+        map_data = get_request_data(connection, "assets-api", "map")
 
         if not match_data or 'match_info' not in match_data:
             return None, "Failed to fetch match data from API", None, None, None
@@ -2119,9 +2122,10 @@ def create_match_visualizations(match_id, player_slot=None):
             metrics = [m for m in all_metrics if m['key'] in df_stats.columns]
 
             if not metrics:
-                print("[STATS DEBUG] No valid metrics found in df_stats")
+                pass
+                #print("[STATS DEBUG] No valid metrics found in df_stats")
             else:
-                print(f"[STATS DEBUG] Found {len(metrics)} valid metrics: {[m['key'] for m in metrics]}")
+                #print(f"[STATS DEBUG] Found {len(metrics)} valid metrics: {[m['key'] for m in metrics]}")
 
                 fig = go.Figure()
 
@@ -2226,6 +2230,318 @@ def create_match_visualizations(match_id, player_slot=None):
                 charts['player_stats_over_time'] = json.dumps(fig, cls=PlotlyJSONEncoder)
                 charts['player_stats_metrics'] = json.dumps(metrics)
 
+        # Chart: Match Replay (Player Positions over Time)
+        match_paths = match_info.get('match_paths')
+        if match_paths and match_paths.get('paths'):
+            try:
+                interval_s = match_paths.get('interval_s', 1.0)
+                x_resolution = match_paths.get('x_resolution', 16383)
+                y_resolution = match_paths.get('y_resolution', 16383)
+                paths = match_paths['paths']
+
+                # Build player lookup: player_slot → {team, hero_name, hero_icon_url}
+                player_lookup = {}
+                for p in match_info.get('players', []):
+                    slot = p.get('player_slot')
+                    hero_id = p.get('hero_id')
+                    team = p.get('team', 0)
+                    hero_name = 'Unknown'
+                    hero_icon_url = ''
+                    if not df_heroes.empty:
+                        hero_match = df_heroes[df_heroes['id'] == hero_id]
+                        if not hero_match.empty:
+                            hero_row = hero_match.iloc[0]
+                            hero_name = hero_row['name']
+                            for img_key in ['images.icon_image_small', 'images.icon_hero_card', 'images.minimap_image']:
+                                if img_key in hero_row.index and pd.notna(hero_row[img_key]) and hero_row[img_key]:
+                                    hero_icon_url = hero_row[img_key]
+                                    break
+                    player_lookup[slot] = {'team': team, 'hero_name': hero_name, 'hero_icon_url': hero_icon_url}
+
+                # Decode all paths and sort by team then player_slot
+                decoded_players = []
+                for path in paths:
+                    slot = path.get('player_slot')
+                    info = player_lookup.get(slot, {'team': 0, 'hero_name': 'Unknown', 'hero_icon_url': ''})
+                    x_min = path.get('x_min', 0)
+                    x_max = path.get('x_max', 0)
+                    y_min = path.get('y_min', 0)
+                    y_max = path.get('y_max', 0)
+                    x_pos = path.get('x_pos', [])
+                    y_pos = path.get('y_pos', [])
+                    health = path.get('health', [])
+
+                    # Decode positions to game coordinates
+                    game_x = [x_min + (v / x_resolution) * (x_max - x_min) for v in x_pos]
+                    game_y = [y_min + (v / y_resolution) * (y_max - y_min) for v in y_pos]
+
+                    decoded_players.append({
+                        'player_slot': slot,
+                        'team': info['team'],
+                        'hero_name': info['hero_name'],
+                        'hero_icon_url': info['hero_icon_url'],
+                        'x': game_x,
+                        'y': game_y,
+                        'health': health,
+                    })
+
+                decoded_players.sort(key=lambda p: (p['team'], p['player_slot']))
+
+                # Determine max path length and downsample to every 3 seconds
+                max_len = max(len(p['x']) for p in decoded_players)
+                step = max(1, int(3.0 / interval_s))
+                time_indices = list(range(0, max_len, step))
+
+                team_colors = {0: '#3b82f6', 1: '#f97316'}  # blue / orange
+                team_names = {0: 'Archmother', 1: 'Hidden King'}
+                icon_size = 800  # data units (~24px at 600px chart width over 20000-unit range)
+
+                # Semi-transparent team-color circle overlays as base64 SVG data URIs
+                def _overlay_uri(r, g, b):
+                    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+                           f'<circle cx="50" cy="50" r="50" fill="rgba({r},{g},{b},0.3)"/></svg>')
+                    return 'data:image/svg+xml;base64,' + base64.b64encode(svg.encode()).decode()
+                overlay_sources = {0: _overlay_uri(59, 130, 246), 1: _overlay_uri(249, 115, 22)}
+
+                # Objective coord mapping: API relative coords → game coords
+                # Centers derived from symmetry of paired objectives (lr avg=0.45, tr avg=0.46)
+                # Scales calibrated against actual match_paths player positions on lanes:
+                #   X: player on right lane at game_x≈6950 corresponds to lr=0.69 → scale_x=29500
+                #   Y: player spawn (base) at game_y≈-10174 corresponds to tr=0.93 → scale_y=21600
+                map_img_cx = 0.45
+                map_img_cy = 0.46
+                obj_scale_x = 29500
+                obj_scale_y = 21600
+
+                # Parse objectives with positions and destruction times
+                objectives_parsed = []
+                if map_data and match_info.get('objectives'):
+                    obj_positions = map_data.get('objective_positions', {})
+                    # Map numeric objective IDs to position keys (based on typical structure)
+                    id_to_key_suffix = {
+                        1: 'tier1_1', 3: 'tier1_3', 4: 'tier1_4',
+                        5: 'tier2_1', 7: 'tier2_3', 8: 'tier2_4',
+                        10: 'titan', 11: 'core'
+                    }
+                    for obj in match_info['objectives']:
+                        team = obj.get('team', 0)
+                        obj_id = obj.get('team_objective_id')
+                        destroyed_time_s = obj.get('destroyed_time_s', 0)
+
+                        # Build position key: team{0|1}_{suffix}
+                        suffix = id_to_key_suffix.get(obj_id)
+                        if suffix:
+                            pos_key = f'team{team}_{suffix}'
+                            pos = obj_positions.get(pos_key)
+                            if pos:
+                                # Convert relative coords to game coords (asymmetric scales)
+                                game_x = (pos['left_relative'] - map_img_cx) * obj_scale_x
+                                game_y = (map_img_cy - pos['top_relative']) * obj_scale_y
+                                objectives_parsed.append({
+                                    'x': game_x,
+                                    'y': game_y,
+                                    'destroyed_time_s': destroyed_time_s,
+                                    'team': team,
+                                    'obj_id': obj_id,
+                                })
+
+                # Track first player_slot per team for legendgrouptitle
+                first_per_team = {}
+                for p in decoded_players:
+                    if p['team'] not in first_per_team:
+                        first_per_team[p['team']] = p['player_slot']
+
+                # Initial traces (time index 0) — colored ring visible around icon
+                traces = []
+                for p in decoded_players:
+                    initial_hp = p['health'][0] if p['health'] else 100
+                    traces.append(go.Scatter(
+                        x=[p['x'][0]],
+                        y=[p['y'][0]],
+                        mode='markers',
+                        marker=dict(
+                            size=12,
+                            color=team_colors[p['team']],
+                            line=dict(color='white', width=1.5),
+                            opacity=0.15 if initial_hp == 0 else 1.0,
+                        ),
+                        name=p['hero_name'],
+                        legendgroup=team_names[p['team']],
+                        legendgrouptitle=dict(text=team_names[p['team']]) if first_per_team[p['team']] == p['player_slot'] else None,
+                        hovertemplate=f"{p['hero_name']}<br>Team: {team_names[p['team']]}<extra></extra>",
+                    ))
+
+                # Initial layout images: minimap (index 0) + 12 hero icons (indices 1-12)
+                # layout.images (x, y) is the top-left anchor; image extends right (+x) and down (-y)
+                # Center icon on player: img_x = px - icon_size/2, img_y = py + icon_size/2
+                layout_images = [
+                    dict(
+                        source='/static/img/minimap.png',
+                        xref='x', yref='y',
+                        x=-10000, y=10000,
+                        sizex=20000, sizey=20000,
+                        sizing='stretch',
+                        layer='below',
+                    )
+                ]
+                for p in decoded_players:
+                    initial_hp = p['health'][0] if p['health'] else 100
+                    layout_images.append(dict(
+                        source=p['hero_icon_url'],
+                        xref='x', yref='y',
+                        x=p['x'][0] - icon_size / 2,
+                        y=p['y'][0] + icon_size / 2,
+                        sizex=icon_size,
+                        sizey=icon_size,
+                        sizing='stretch',
+                        layer='above',
+                        opacity=0.15 if initial_hp == 0 else 1.0,
+                    ))
+
+                # Team-color hue overlays on top of hero icons (same positions, rendered after icons)
+                for p in decoded_players:
+                    initial_hp = p['health'][0] if p['health'] else 100
+                    layout_images.append(dict(
+                        source=overlay_sources[p['team']],
+                        xref='x', yref='y',
+                        x=p['x'][0] - icon_size / 2,
+                        y=p['y'][0] + icon_size / 2,
+                        sizex=icon_size,
+                        sizey=icon_size,
+                        sizing='stretch',
+                        layer='above',
+                        opacity=0.15 if initial_hp == 0 else 1.0,
+                    ))
+
+                # Objective markers: circles (tier1/titan/core) and diamonds (tier2)
+                obj_size_circle = 600
+                obj_size_diamond = 1050
+                tier2_ids = {5, 7, 8}
+
+                circle_svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+                              '<circle cx="50" cy="50" r="46" fill="white" stroke="#5a6a7a" stroke-width="7"/></svg>')
+                diamond_svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+                               '<polygon points="50,3 97,50 50,97 3,50" fill="white" stroke="#5a6a7a" stroke-width="7"/></svg>')
+                circle_source = 'data:image/svg+xml;base64,' + base64.b64encode(circle_svg.encode()).decode()
+                diamond_source = 'data:image/svg+xml;base64,' + base64.b64encode(diamond_svg.encode()).decode()
+
+                for obj in objectives_parsed:
+                    is_tier2 = obj['obj_id'] in tier2_ids
+                    source = diamond_source if is_tier2 else circle_source
+                    size = obj_size_diamond if is_tier2 else obj_size_circle
+                    layout_images.append(dict(
+                        source=source,
+                        xref='x', yref='y',
+                        x=obj['x'] - size / 2,
+                        y=obj['y'] + size / 2,
+                        sizex=size,
+                        sizey=size,
+                        sizing='stretch',
+                        layer='above',
+                        opacity=0.85,
+                    ))
+
+                # Build animation frames
+                # layout.images order: [0]=minimap, [1-12]=hero icons, [13-24]=color overlays, [25+]=objectives
+                frames = []
+                for t_idx in time_indices:
+                    frame_data = []
+                    frame_icon_updates = []   # indices 1-12
+                    frame_overlay_updates = []  # indices 13-24
+                    for p in decoded_players:
+                        clamped = min(t_idx, len(p['x']) - 1)
+                        hp = p['health'][clamped] if p['health'] and clamped < len(p['health']) else 100
+                        opacity = 0.15 if hp == 0 else 1.0
+
+                        frame_data.append(go.Scatter(
+                            x=[p['x'][clamped]],
+                            y=[p['y'][clamped]],
+                            marker=dict(opacity=opacity),
+                        ))
+                        img_update = dict(
+                            x=p['x'][clamped] - icon_size / 2,
+                            y=p['y'][clamped] + icon_size / 2,
+                            opacity=opacity,
+                        )
+                        frame_icon_updates.append(img_update)
+                        frame_overlay_updates.append(dict(img_update))  # same pos/opacity for overlay
+
+                    # Update objective opacities based on current time
+                    time_s = t_idx * interval_s
+                    frame_objective_updates = []
+                    for obj in objectives_parsed:
+                        # 0.85 if not yet destroyed, 0.15 if destroyed
+                        # destroyed_time_s == 0 means not destroyed
+                        if obj['destroyed_time_s'] == 0 or time_s < obj['destroyed_time_s']:
+                            opacity = 0.85
+                        else:
+                            opacity = 0.15
+                        frame_objective_updates.append(dict(opacity=opacity))
+
+                    # [minimap no-op] + [12 icon updates] + [12 overlay updates] + [N objective updates]
+                    frame_images = [{}] + frame_icon_updates + frame_overlay_updates + frame_objective_updates
+
+                    minutes = int(time_s) // 60
+                    secs = int(time_s) % 60
+                    frame_name = f"{minutes}:{secs:02d}"
+                    frames.append(go.Frame(data=frame_data, layout=dict(images=frame_images), name=frame_name))
+
+                # Slider steps
+                slider_steps = []
+                for i, frame in enumerate(frames):
+                    slider_steps.append(dict(
+                        args=[[frame.name], {'frame': {'duration': 100, 'redraw': True}, 'mode': 'immediate', 'fromcurrent': True}],
+                        label=frame.name,
+                        method='animate',
+                    ))
+
+                fig_replay = go.Figure(data=traces, frames=frames)
+                fig_replay.update_layout(
+                    title=dict(text='Minimap Replay', font=dict(color='#66c0f4', size=22)),
+                    xaxis=dict(
+                        range=[-10000, 10000],
+                        showgrid=False,
+                        showticklabels=False,
+                        showline=False,
+                        title=None,
+                    ),
+                    yaxis=dict(
+                        range=[-10000, 10000],
+                        scaleanchor='x',
+                        scaleratio=1,
+                        showgrid=False,
+                        showticklabels=False,
+                        showline=False,
+                        title=None,
+                    ),
+                    images=layout_images,
+                    paper_bgcolor='rgba(0, 0, 0, 0)',
+                    plot_bgcolor='rgba(22, 32, 45, 0.4)',
+                    font=dict(color='#c7d5e0', family='Motiva Sans, Arial', size=12),
+                    showlegend=False,
+                    margin=dict(t=60, b=120, l=40, r=40),
+                    height=650,
+                    width=650,
+                    sliders=[dict(
+                        active=0,
+                        steps=slider_steps,
+                        currentvalue=dict(prefix='Time: ', font=dict(color='#c7d5e0', size=14)),
+                        x=0.05,
+                        len=0.9,
+                        y=-0.1,
+                        pad=dict(t=10),
+                    )],
+                )
+
+                charts['match_replay'] = json.dumps(fig_replay, cls=PlotlyJSONEncoder)
+                charts['match_replay_legend'] = json.dumps([
+                    {'hero_name': p['hero_name'], 'hero_icon_url': p['hero_icon_url'], 'team': p['team']}
+                    for p in decoded_players
+                ])
+
+            except Exception as e:
+                print(f"[REPLAY] Error building match replay chart: {e}")
+
         # Match Summary
         duration_s = match_info.get('duration_s', 0)
         start_time = match_info.get('start_time', 0)
@@ -2266,8 +2582,8 @@ def create_match_visualizations(match_id, player_slot=None):
         rank_badge_team0 = rank_badge_mapping.get(tier_0, '')
         rank_badge_team1 = rank_badge_mapping.get(tier_1, '')
 
-        print(f"[RANK DEBUG] average_badge_team0: {avg_badge_0} → tier {tier_0}, badge URL: {rank_badge_team0}")
-        print(f"[RANK DEBUG] average_badge_team1: {avg_badge_1} → tier {tier_1}, badge URL: {rank_badge_team1}")
+        #print(f"[RANK DEBUG] average_badge_team0: {avg_badge_0} → tier {tier_0}, badge URL: {rank_badge_team0}")
+        #print(f"[RANK DEBUG] average_badge_team1: {avg_badge_1} → tier {tier_1}, badge URL: {rank_badge_team1}")
 
         match_summary = {
             'match_id': match_info.get('match_id', match_id),

@@ -446,7 +446,7 @@
             {% if charts.performance_curve %}
             var chart3 = {{ charts.performance_curve | safe }};
             applySteamTheme(chart3.layout, false);
-            Plotly.newPlot('chart3', chart3.data, chart3.layout, {displayModeBar: true, displaylogo: false});
+            Plotly.newPlot('chart3', chart3.data, chart3.layout, {displayModeBar: true, displaylogo: false, responsive: true});
             {% endif %}
 
             {% if charts.kd_stats %}
