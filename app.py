@@ -2069,6 +2069,35 @@ def create_match_visualizations(match_id, player_slot=None):
         patron_logo_team0 = images_data.get('hud_core_team2_patron_logo_webp') if images_data else None
         patron_logo_team1 = images_data.get('hud_core_team1_patron_logo_webp') if images_data else None
 
+        # Build rank badge mapping (division/tier → base badge URL, matching player page logic)
+        rank_badge_mapping = {}
+        if ranks_data:
+            for rank in ranks_data:
+                tier = rank.get('tier')
+                images = rank.get('images', {})
+                badge_url = ''
+                if isinstance(images, dict):
+                    # Use base badge (no subrank) for team averages
+                    for key in ['large_webp', 'large']:
+                        if key in images and images[key]:
+                            badge_url = images[key]
+                            break
+                rank_badge_mapping[tier] = badge_url
+
+        # Decode average_badge to tier: tier = badge // 10
+        # Badge 41 → tier 4 (Arcanist), Badge 70 → tier 7 (Archon), etc.
+        avg_badge_0 = match_info.get('average_badge_team0')
+        avg_badge_1 = match_info.get('average_badge_team1')
+
+        tier_0 = avg_badge_0 // 10 if avg_badge_0 is not None else None
+        tier_1 = avg_badge_1 // 10 if avg_badge_1 is not None else None
+
+        rank_badge_team0 = rank_badge_mapping.get(tier_0, '')
+        rank_badge_team1 = rank_badge_mapping.get(tier_1, '')
+
+        print(f"[RANK DEBUG] average_badge_team0: {avg_badge_0} → tier {tier_0}, badge URL: {rank_badge_team0}")
+        print(f"[RANK DEBUG] average_badge_team1: {avg_badge_1} → tier {tier_1}, badge URL: {rank_badge_team1}")
+
         match_summary = {
             'match_id': match_info.get('match_id', match_id),
             'duration_s': duration_s,
@@ -2076,9 +2105,11 @@ def create_match_visualizations(match_id, player_slot=None):
             'start_time': start_time,
             'start_date_formatted': start_date_formatted,
             'winning_team': winning_team,
-            'game_mode': match_info.get('game_mode', 'Unknown'),
+            'game_mode': {1: 'Standard', 4: 'Street Brawl'}.get(match_info.get('game_mode'), 'Unknown'),
             'patron_logo_team0': patron_logo_team0,
             'patron_logo_team1': patron_logo_team1,
+            'rank_badge_team0': rank_badge_team0,
+            'rank_badge_team1': rank_badge_team1,
         }
 
         # Calculate player damage, boss damage, and total healing from final stats (last entry in stats array)
@@ -2138,6 +2169,14 @@ def create_match_visualizations(match_id, player_slot=None):
                 'ability_points': int(df_players[df_players['team'] == 1]['ability_points'].sum()) if not df_players.empty and 'ability_points' in df_players.columns else 0,
             }
         }
+
+        # Determine which team leads each metric
+        team_stats['best'] = {}
+        for metric in ['kills', 'deaths', 'assists', 'net_worth', 'player_damage', 'ability_points']:
+            if team_stats['team0'][metric] > team_stats['team1'][metric]:
+                team_stats['best'][metric] = 'team0'
+            elif team_stats['team1'][metric] > team_stats['team0'][metric]:
+                team_stats['best'][metric] = 'team1'
 
         # Player Scoreboard
         player_scoreboard = []
@@ -2222,11 +2261,20 @@ def create_match_visualizations(match_id, player_slot=None):
                     'player_healing': int(player.total_healing) if hasattr(player, 'total_healing') else 0,
                     'result': player.result if hasattr(player, 'result') else 'Unknown',
                     'mvp_rank': int(player.mvp_rank) if hasattr(player, 'mvp_rank') and pd.notna(player.mvp_rank) else None,
-                    'final_items': final_items
+                    'final_items': final_items,
+                    'best_stats': []
                 })
 
         # Sort player scoreboard by player_slot
         player_scoreboard = sorted(player_scoreboard, key=lambda x: x['player_slot'])
+
+        # Highlight the highest value in each stat column
+        for stat in ['kills', 'deaths', 'assists', 'net_worth', 'last_hits', 'denies', 'player_damage', 'boss_damage', 'player_healing']:
+            max_val = max((p[stat] for p in player_scoreboard), default=0)
+            if max_val > 0:
+                for p in player_scoreboard:
+                    if p[stat] == max_val:
+                        p['best_stats'].append(stat)
 
         return charts, match_summary, team_stats, player_scoreboard, filtered_player_info
 
