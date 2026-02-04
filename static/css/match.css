@@ -708,3 +708,122 @@ body::before {
         text-align: center;
     }
 }
+
+/* Chart Section */
+.chart-section {
+    background: linear-gradient(to bottom, #2a475e 0%, #1b2838 100%);
+    border: 1px solid #3d4e5c;
+    border-radius: 4px;
+    padding: 30px;
+    margin-top: 30px;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+}
+
+.chart-section h2 {
+    color: #66c0f4;
+    font-size: 1.8em;
+    font-weight: 300;
+    letter-spacing: 1px;
+    margin-bottom: 20px;
+    text-shadow: 0 0 20px rgba(102, 192, 244, 0.4);
+}
+
+.chart-container {
+    min-height: 400px;
+}
+
+/* Chart Title Overlay */
+.chart-title-overlay {
+    position: absolute;
+    left: 60px;
+    top: 14px;
+    color: #66c0f4;
+    font-size: 22px;
+    font-family: Motiva Sans, Arial, sans-serif;
+    font-weight: 300;
+    letter-spacing: 0.5px;
+    z-index: 10;
+    pointer-events: none;
+}
+
+/* Custom Metric Dropdown */
+.metric-dropdown-container {
+    position: absolute;
+    top: 40px;
+    left: 60px;
+    z-index: 100;
+}
+
+.metric-dropdown-button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: linear-gradient(to right, #47bfff 5%, #1a44c2 60%);
+    background-position: 25%;
+    background-size: 330% 100%;
+    color: white;
+    border: 1px solid #3d4e5c;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: all 0.2s ease;
+    min-width: 200px;
+}
+
+.metric-dropdown-button:hover {
+    background-position: 0%;
+    box-shadow: 0 0 15px rgba(102, 192, 244, 0.4);
+}
+
+.dropdown-arrow {
+    margin-left: auto;
+    transition: transform 0.2s;
+}
+
+.metric-dropdown-button.active .dropdown-arrow {
+    transform: rotate(180deg);
+}
+
+.metric-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 5px;
+    background: #1b2838;
+    border: 1px solid #3d4e5c;
+    border-radius: 3px;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    max-height: 500px;
+    overflow-y: auto;
+    min-width: 800px;
+}
+
+.metric-dropdown-menu.active {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2px;
+    padding: 8px;
+}
+
+.metric-option {
+    padding: 8px 12px;
+    cursor: pointer;
+    color: #c7d5e0;
+    font-size: 0.85em;
+    transition: all 0.15s;
+    border-radius: 2px;
+    white-space: nowrap;
+}
+
+.metric-option:hover {
+    background: #2a475e;
+    color: #66c0f4;
+}
+
+.metric-option.selected {
+    background: #3b82f6;
+    color: white;
+}

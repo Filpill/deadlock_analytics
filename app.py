@@ -2053,7 +2053,178 @@ def create_match_visualizations(match_id, player_slot=None):
 
         charts = {}
 
-        # Charts will be added here in future iterations
+        # Chart: Player Stats Over Time
+        if not df_stats.empty and not df_players.empty:
+            # Convert time_stamp_s to minutes
+            df_stats['time_min'] = df_stats['time_stamp_s'] / 60.0
+
+            # Define all possible metrics to plot (based on actual df_stats columns)
+            all_metrics = [
+                # Core stats
+                {'key': 'kills', 'name': 'Kills', 'yaxis_title': 'Kills'},
+                {'key': 'deaths', 'name': 'Deaths', 'yaxis_title': 'Deaths'},
+                {'key': 'assists', 'name': 'Assists', 'yaxis_title': 'Assists'},
+                {'key': 'net_worth', 'name': 'Net Worth', 'yaxis_title': 'Net Worth (Souls)'},
+
+                # Creep stats
+                {'key': 'creep_kills', 'name': 'Creep Kills', 'yaxis_title': 'Creep Kills'},
+                {'key': 'neutral_kills', 'name': 'Neutral Kills', 'yaxis_title': 'Neutral Kills'},
+                {'key': 'denies', 'name': 'Denies', 'yaxis_title': 'Denies'},
+                {'key': 'possible_creeps', 'name': 'Possible Creeps', 'yaxis_title': 'Possible Creeps'},
+
+                # Gold breakdown
+                {'key': 'gold_player', 'name': 'Total Gold', 'yaxis_title': 'Gold (Souls)'},
+                {'key': 'gold_lane_creep', 'name': 'Gold from Lane Creeps', 'yaxis_title': 'Gold (Souls)'},
+                {'key': 'gold_neutral_creep', 'name': 'Gold from Neutrals', 'yaxis_title': 'Gold (Souls)'},
+                {'key': 'gold_boss', 'name': 'Gold from Boss', 'yaxis_title': 'Gold (Souls)'},
+                {'key': 'gold_player_orbs', 'name': 'Gold from Player Orbs', 'yaxis_title': 'Gold (Souls)'},
+                {'key': 'gold_lane_creep_orbs', 'name': 'Gold from Lane Orbs', 'yaxis_title': 'Gold (Souls)'},
+                {'key': 'gold_neutral_creep_orbs', 'name': 'Gold from Neutral Orbs', 'yaxis_title': 'Gold (Souls)'},
+                {'key': 'gold_boss_orb', 'name': 'Gold from Boss Orb', 'yaxis_title': 'Gold (Souls)'},
+                {'key': 'gold_treasure', 'name': 'Gold from Treasure', 'yaxis_title': 'Gold (Souls)'},
+                {'key': 'gold_denied', 'name': 'Gold Denied', 'yaxis_title': 'Gold (Souls)'},
+                {'key': 'gold_death_loss', 'name': 'Gold Lost on Death', 'yaxis_title': 'Gold (Souls)'},
+
+                # Damage stats
+                {'key': 'player_damage', 'name': 'Player Damage', 'yaxis_title': 'Damage'},
+                {'key': 'creep_damage', 'name': 'Creep Damage', 'yaxis_title': 'Damage'},
+                {'key': 'neutral_damage', 'name': 'Neutral Damage', 'yaxis_title': 'Damage'},
+                {'key': 'boss_damage', 'name': 'Boss Damage', 'yaxis_title': 'Damage'},
+                {'key': 'player_damage_taken', 'name': 'Damage Taken', 'yaxis_title': 'Damage'},
+
+                # Healing stats
+                {'key': 'player_healing', 'name': 'Player Healing', 'yaxis_title': 'Healing'},
+                {'key': 'self_healing', 'name': 'Self Healing', 'yaxis_title': 'Healing'},
+                {'key': 'heal_prevented', 'name': 'Heal Prevented', 'yaxis_title': 'Healing'},
+                {'key': 'heal_lost', 'name': 'Heal Lost', 'yaxis_title': 'Healing'},
+
+                # Character stats
+                {'key': 'ability_points', 'name': 'Ability Points', 'yaxis_title': 'Ability Points'},
+                {'key': 'max_health', 'name': 'Max Health', 'yaxis_title': 'Max Health'},
+                {'key': 'weapon_power', 'name': 'Weapon Power', 'yaxis_title': 'Weapon Power'},
+                {'key': 'tech_power', 'name': 'Tech Power', 'yaxis_title': 'Tech Power'},
+
+                # Shooting stats
+                {'key': 'shots_hit', 'name': 'Shots Hit', 'yaxis_title': 'Shots'},
+                {'key': 'shots_missed', 'name': 'Shots Missed', 'yaxis_title': 'Shots'},
+                {'key': 'hero_bullets_hit', 'name': 'Hero Bullets Hit', 'yaxis_title': 'Bullets'},
+                {'key': 'hero_bullets_hit_crit', 'name': 'Critical Hits', 'yaxis_title': 'Critical Hits'},
+
+                # Defense stats
+                {'key': 'damage_absorbed', 'name': 'Damage Absorbed', 'yaxis_title': 'Damage'},
+                {'key': 'absorption_provided', 'name': 'Absorption Provided', 'yaxis_title': 'Absorption'},
+            ]
+
+            # Filter metrics to only those that exist in df_stats
+            metrics = [m for m in all_metrics if m['key'] in df_stats.columns]
+
+            if not metrics:
+                print("[STATS DEBUG] No valid metrics found in df_stats")
+            else:
+                print(f"[STATS DEBUG] Found {len(metrics)} valid metrics: {[m['key'] for m in metrics]}")
+
+                fig = go.Figure()
+
+                # Color palettes for each team
+                rainbow_colors = [
+                    '#ef4444', '#f97316', '#eab308', '#22c55e',
+                    '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899',
+                    '#14b8a6', '#f59e0b', '#10b981', '#6366f1'
+                ]
+
+                # Create traces for each metric and player
+                for metric_idx, metric in enumerate(metrics):
+                    metric_key = metric['key']
+
+                    # Skip if metric doesn't exist in df_stats
+                    if metric_key not in df_stats.columns:
+                        continue
+
+                    for player_idx, player_slot in enumerate(sorted(df_stats['player_slot'].unique())):
+                        player_data = df_stats[df_stats['player_slot'] == player_slot].sort_values('time_min')
+
+                        if player_data.empty:
+                            continue
+
+                        # Get player info
+                        player_info = df_players[df_players['player_slot'] == player_slot]
+                        if player_info.empty:
+                            continue
+
+                        team = int(player_info.iloc[0]['team'])
+                        hero_name = player_info.iloc[0].get('hero_name', f'Player {player_slot}')
+
+                        color = rainbow_colors[player_idx % len(rainbow_colors)]
+
+                        # Create trace
+                        visible = True if metric_idx == 0 else False
+                        fig.add_trace(go.Scatter(
+                            x=player_data['time_min'].tolist(),
+                            y=player_data[metric_key].tolist(),
+                            mode='lines',
+                            name=hero_name,
+                            line=dict(color=color, width=2),
+                            visible=visible,
+                            hovertemplate=f'<b>{hero_name}</b><br>Time: %{{x:.1f}} min<br>{metric["name"]}: %{{y}}<extra></extra>'
+                        ))
+
+                # Create dropdown buttons
+                dropdown_buttons = []
+                traces_per_metric = len(df_stats['player_slot'].unique())
+
+                for metric_idx, metric in enumerate(metrics):
+                    # Calculate visibility array for this metric
+                    visible = [False] * len(fig.data)
+                    start_idx = metric_idx * traces_per_metric
+                    end_idx = start_idx + traces_per_metric
+                    for i in range(start_idx, min(end_idx, len(fig.data))):
+                        visible[i] = True
+
+                    dropdown_buttons.append({
+                        'label': metric['name'],
+                        'method': 'update',
+                        'args': [
+                            {'visible': visible},
+                            {
+                                'yaxis.title.text': metric['yaxis_title'],
+                                'title.text': f"{metric['name']} Over Time"
+                            }
+                        ]
+                    })
+
+                # Update layout with Steam theme
+                fig.update_layout(
+                    title_text='',
+                    xaxis=dict(
+                        title='Game Time (minutes)',
+                        gridcolor='#3d4e5c',
+                        zerolinecolor='#3d4e5c'
+                    ),
+                    yaxis=dict(
+                        title='Kills',
+                        gridcolor='#3d4e5c',
+                        zerolinecolor='#3d4e5c'
+                    ),
+                    paper_bgcolor='rgba(0, 0, 0, 0)',
+                    plot_bgcolor='rgba(22, 32, 45, 0.4)',
+                    font=dict(color='#c7d5e0', family='Motiva Sans, Arial', size=12),
+                    hovermode='closest',
+                    showlegend=True,
+                    legend=dict(
+                        orientation='v',
+                        yanchor='top',
+                        y=1,
+                        xanchor='left',
+                        x=1.02,
+                        bgcolor='rgba(27, 40, 56, 0.9)',
+                        bordercolor='#3d4e5c'
+                    ),
+                    margin=dict(t=60, b=50, l=60, r=180),
+                    height=600
+                )
+
+                charts['player_stats_over_time'] = json.dumps(fig, cls=PlotlyJSONEncoder)
+                charts['player_stats_metrics'] = json.dumps(metrics)
 
         # Match Summary
         duration_s = match_info.get('duration_s', 0)

@@ -212,6 +212,22 @@
         </div>
         {% endif %}
 
+        <!-- Player Stats Over Time Chart -->
+        {% if charts.player_stats_over_time %}
+        <div id="playerStatsOverTimeChart" class="chart-container" style="position: relative; margin-top: 30px;">
+            <div class="chart-title-overlay" id="playerStatsTitle">Player Performance Over Time (Kills)</div>
+            <div class="metric-dropdown-container">
+                <button class="metric-dropdown-button" id="metricDropdownBtn">
+                    <span id="selectedMetric">Kills</span>
+                    <span class="dropdown-arrow">▼</span>
+                </button>
+                <div class="metric-dropdown-menu" id="metricDropdownMenu">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
     </div>
 
     <script>
@@ -301,7 +317,73 @@
             return chart;
         }
 
-        // Charts will be rendered here in future iterations
+        // Render Player Stats Over Time Chart
+        {% if charts.player_stats_over_time %}
+        var playerStatsChart = {{ charts.player_stats_over_time | safe }};
+        var metrics = {{ charts.player_stats_metrics | safe }};
+        Plotly.newPlot('playerStatsOverTimeChart', playerStatsChart.data, playerStatsChart.layout, {responsive: true});
+
+        // Calculate traces per metric from actual data
+        const numTraces = playerStatsChart.data.length;
+        const numMetrics = metrics.length;
+        const actualTracesPerMetric = Math.floor(numTraces / numMetrics);
+
+        // Populate dropdown menu
+        const dropdownMenu = document.getElementById('metricDropdownMenu');
+        metrics.forEach((metric, idx) => {
+            const option = document.createElement('div');
+            option.className = 'metric-option' + (idx === 0 ? ' selected' : '');
+            option.textContent = metric.name;
+            option.dataset.metricIndex = idx;
+            option.addEventListener('click', () => switchMetric(idx, metric));
+            dropdownMenu.appendChild(option);
+        });
+
+        // Toggle dropdown
+        const dropdownBtn = document.getElementById('metricDropdownBtn');
+        dropdownBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdownBtn.classList.toggle('active');
+            dropdownMenu.classList.toggle('active');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', () => {
+            dropdownBtn.classList.remove('active');
+            dropdownMenu.classList.remove('active');
+        });
+
+        // Switch metric function
+        function switchMetric(metricIdx, metric) {
+            // Update visibility
+            const visible = playerStatsChart.data.map((_, i) => {
+                const traceMetricIdx = Math.floor(i / actualTracesPerMetric);
+                return traceMetricIdx === metricIdx;
+            });
+
+            // Update chart
+            Plotly.update('playerStatsOverTimeChart',
+                { visible: visible },
+                { 'yaxis.title.text': metric.yaxis_title }
+            );
+
+            // Update HTML title
+            document.getElementById('playerStatsTitle').textContent = 'Player Performance Over Time (' + metric.name + ')';
+
+            // Update button text
+            document.getElementById('selectedMetric').textContent = metric.name;
+
+            // Update selected state
+            document.querySelectorAll('.metric-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            document.querySelector(`[data-metric-index="${metricIdx}"]`).classList.add('selected');
+
+            // Close dropdown
+            dropdownBtn.classList.remove('active');
+            dropdownMenu.classList.remove('active');
+        }
+        {% endif %}
 
         // Hide loading overlay on page show (for back button)
         window.addEventListener('pageshow', function(event) {
