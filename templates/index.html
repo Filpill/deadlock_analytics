@@ -43,9 +43,15 @@
     </div>
     <div class="page-wrapper">
         <div class="container">
-            <h1>Search Player</h1>
-            <p class="subtitle">Advanced player statistics and performance analysis</p>
+            <h1 id="pageTitle">Search Player</h1>
+            <p class="subtitle" id="pageSubtitle">Advanced player statistics and performance analysis</p>
             <div class="steam-badge">Powered by Deadlock API</div>
+
+            <!-- Mode Toggle -->
+            <div class="mode-toggle">
+                <button class="mode-btn active" data-mode="player">Player Analytics</button>
+                <button class="mode-btn" data-mode="match">Match Analysis</button>
+            </div>
 
             {% if error %}
             <div class="error">
@@ -53,7 +59,8 @@
             </div>
             {% endif %}
 
-            <form method="POST" action="/analyze" id="analyzeForm">
+            <!-- Player Search Form -->
+            <form method="POST" action="/analyze" id="analyzeForm" class="search-form active">
                 <div class="form-group">
                     <label for="player_id">Player ID (SteamID3 Format)</label>
                     <input type="text"
@@ -67,14 +74,40 @@
                 <button type="submit">Analyze Player Stats</button>
             </form>
 
-            <div class="info-box">
-            <h3>How to find your Player ID</h3>
-            <p>Your Player ID is in SteamID3 format. You can find it by:</p>
-            <ul>
-                <li>Checking your Steam profile URL</li>
-                <li>Using a SteamID converter tool</li>
-            </ul>
-            <p style="margin-top: 15px;"><strong>Example:</strong> <code>199540209</code></p>
+            <!-- Match Search Form -->
+            <form method="POST" action="/match-analysis" id="matchAnalyzeForm" class="search-form">
+                <div class="form-group">
+                    <label for="match_id">Match ID</label>
+                    <input type="text"
+                           id="match_id"
+                           name="match_id"
+                           placeholder="e.g., 54331746"
+                           required
+                           autocomplete="off">
+                </div>
+
+                <button type="submit">Analyze Match</button>
+            </form>
+
+            <!-- Info boxes -->
+            <div class="info-box" id="playerInfoBox">
+                <h3>How to find your Player ID</h3>
+                <p>Your Player ID is in SteamID3 format. You can find it by:</p>
+                <ul>
+                    <li>Checking your Steam profile URL</li>
+                    <li>Using a SteamID converter tool</li>
+                </ul>
+                <p style="margin-top: 15px;"><strong>Example:</strong> <code>199540209</code></p>
+            </div>
+
+            <div class="info-box" id="matchInfoBox" style="display: none;">
+                <h3>How to find a Match ID</h3>
+                <p>Match IDs can be found by:</p>
+                <ul>
+                    <li>Looking at recent matches from player analytics</li>
+                    <li>Searching match IDs from in-game history</li>
+                </ul>
+                <p style="margin-top: 15px;"><strong>Example:</strong> <code>54331746</code></p>
             </div>
         </div>
 
@@ -137,14 +170,70 @@
         rankDistChart.layout.paper_bgcolor = 'rgba(0, 0, 0, 0)';
         rankDistChart.layout.plot_bgcolor = 'rgba(22, 32, 45, 0.4)';
         rankDistChart.layout.font = { color: '#c7d5e0', family: 'Motiva Sans, Arial' };
-        rankDistChart.layout.xaxis.gridcolor = '#3d4e5c';
-        rankDistChart.layout.yaxis.gridcolor = '#3d4e5c';
+        rankDistChart.layout.xaxis.showgrid = false;
+        rankDistChart.layout.yaxis.showgrid = false;
 
         Plotly.newPlot('rankDistributionChart', rankDistChart.data, rankDistChart.layout, {responsive: true});
         {% endif %}
     </script>
 
     <script>
+        // Mode toggle functionality
+        const modeBtns = document.querySelectorAll('.mode-btn');
+        const analyzeForm = document.getElementById('analyzeForm');
+        const matchAnalyzeForm = document.getElementById('matchAnalyzeForm');
+        const pageTitle = document.getElementById('pageTitle');
+        const pageSubtitle = document.getElementById('pageSubtitle');
+        const playerInfoBox = document.getElementById('playerInfoBox');
+        const matchInfoBox = document.getElementById('matchInfoBox');
+
+        // Check URL parameter for mode
+        const urlParams = new URLSearchParams(window.location.search);
+        const initialMode = urlParams.get('mode') || 'player';
+
+        function switchMode(mode) {
+            // Update buttons
+            modeBtns.forEach(btn => {
+                if (btn.dataset.mode === mode) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            // Update forms and content
+            if (mode === 'player') {
+                analyzeForm.classList.add('active');
+                matchAnalyzeForm.classList.remove('active');
+                pageTitle.textContent = 'Search Player';
+                pageSubtitle.textContent = 'Advanced player statistics and performance analysis';
+                playerInfoBox.style.display = 'block';
+                matchInfoBox.style.display = 'none';
+            } else {
+                analyzeForm.classList.remove('active');
+                matchAnalyzeForm.classList.add('active');
+                pageTitle.textContent = 'Search Match';
+                pageSubtitle.textContent = 'Detailed match breakdown and team performance analysis';
+                playerInfoBox.style.display = 'none';
+                matchInfoBox.style.display = 'block';
+            }
+
+            // Update URL without reload
+            const newUrl = new URL(window.location);
+            newUrl.searchParams.set('mode', mode);
+            window.history.pushState({}, '', newUrl);
+        }
+
+        // Initialize with correct mode
+        switchMode(initialMode);
+
+        // Add click handlers to mode buttons
+        modeBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                switchMode(this.dataset.mode);
+            });
+        });
+
         // Play UI sound when data is fetched
         function playDataFetchedSound() {
             return new Promise((resolve, reject) => {
@@ -171,16 +260,21 @@
             });
         }
 
+        // Handle player form submission
         document.getElementById('analyzeForm').addEventListener('submit', async function(e) {
-            e.preventDefault(); // Prevent default form submission
-
-            // Show loading overlay
+            e.preventDefault();
             document.getElementById('loadingOverlay').classList.add('active');
-
-            // Play UI sound and wait for it to finish
             await playDataFetchedSound();
+            e.target.submit();
+        });
 
-            // Submit the form manually after sound finishes
+        // Handle match form submission
+        document.getElementById('matchAnalyzeForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            document.getElementById('loadingOverlay').classList.add('active');
+            document.querySelector('#loadingOverlay .loading-text').textContent = 'Analyzing Match Data';
+            document.querySelector('#loadingOverlay .loading-subtext').textContent = 'Fetching match details, player stats, and visualizations...';
+            await playDataFetchedSound();
             e.target.submit();
         });
 
@@ -189,13 +283,8 @@
             playerDiv.addEventListener('click', async function() {
                 const accountId = this.getAttribute('data-account-id');
                 if (accountId && accountId !== 'N/A') {
-                    // Show loading overlay
                     document.getElementById('loadingOverlay').classList.add('active');
-
-                    // Play UI sound
                     await playDataFetchedSound();
-
-                    // Navigate to analyze page
                     window.location.href = `/analyze?player_id=${accountId}`;
                 }
             });
