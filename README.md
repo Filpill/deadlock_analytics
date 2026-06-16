@@ -12,6 +12,8 @@ A comprehensive web-based analytics platform for Deadlock game statistics. View 
 
 ## Live Application
 
+**> Update 2026-06-16: Underlying API's have changed and breaking some elements on the website, not actively maintaining website at the moment.**
+
 🚀 **Try it now**: [https://deadlock-analytics-164941517977.europe-west2.run.app](https://deadlock-analytics-164941517977.europe-west2.run.app)
 
 The application is deployed on **Google Cloud Run** in the `europe-west2` region, providing:
